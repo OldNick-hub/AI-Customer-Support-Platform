@@ -13,9 +13,9 @@
 
 ### 1.1 Grounding in Authoritative Knowledge Documents
 - **Verdict:** **PASS (with synthetic document corpus qualification)**
-- **File Reference:** [`backend/app/modules/knowledge/benchmarks/golden_qa_v1.json`](backend/app/modules/knowledge/benchmarks/golden_qa_v1.json#L12-L218)
+- **File Reference:** [`backend/app/modules/knowledge/benchmarks/golden_qa_v1.json`](../../backend/app/modules/knowledge/benchmarks/golden_qa_v1.json#L12-L218)
 - **Evidence:**
-  - All 25 test cases represent realistic, authoritative customer inquiries grounded in the functional policy specifications established in [`docs/architecture/PRODUCT_REQUIREMENTS.md`](docs/architecture/PRODUCT_REQUIREMENTS.md#L45-L88) and [`DAY_04_TASK_1_ARCHITECTURE_PLAN.md`](DAY_04_TASK_1_ARCHITECTURE_PLAN.md#L330-L367).
+  - All 25 test cases represent realistic, authoritative customer inquiries grounded in the functional policy specifications established in [`docs/architecture/PRODUCT_REQUIREMENTS.md`](../architecture/PRODUCT_REQUIREMENTS.md#L45-L88) and [`TASK_1_ARCHITECTURE_PLAN.md`](TASK_1_ARCHITECTURE_PLAN.md#L330-L367).
   - Explicit business policy clauses are captured across 4 distinct categories:
     - `RETURNS_AND_REFUNDS`: 7 queries (`QA-RET-001` .. `QA-RET-007`)
     - `SHIPPING_AND_DELIVERY`: 6 queries (`QA-SHP-001` .. `QA-SHP-006`)
@@ -25,7 +25,7 @@
 
 ### 1.2 Policy Document Code Existence & Traceability
 - **Verdict:** **PASS**
-- **File Reference:** [`backend/app/modules/knowledge/benchmarks/golden_qa_v1.json`](backend/app/modules/knowledge/benchmarks/golden_qa_v1.json#L17-L215)
+- **File Reference:** [`backend/app/modules/knowledge/benchmarks/golden_qa_v1.json`](../../backend/app/modules/knowledge/benchmarks/golden_qa_v1.json#L17-L215)
 - **Evidence:**
   - Every test case specifies at least one required citation:
     - `POL-RETURN-US-2026` (used in all 7 `RETURNS_AND_REFUNDS` cases)
@@ -40,7 +40,7 @@
 
 ### 2.1 FAISS Index Querying
 - **Verdict:** **PASS**
-- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](backend/app/modules/knowledge/benchmark_evaluator.py#L281-L328)
+- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](../../backend/app/modules/knowledge/benchmark_evaluator.py#L281-L328)
 - **Evidence:**
   - `BenchmarkEvaluator.evaluate_candidate_index()` accepts either a loaded `faiss.Index` instance or resolves `storage_path` and invokes `faiss.read_index(storage_path)` directly.
   - Queries are embedded into 384-dimensional unit vectors (`np.array([q_emb], dtype=np.float32)`).
@@ -50,7 +50,7 @@
 
 ### 2.2 Hit@5 & Metadata Resolution
 - **Verdict:** **PASS**
-- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](backend/app/modules/knowledge/benchmark_evaluator.py#L330-L362)
+- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](../../backend/app/modules/knowledge/benchmark_evaluator.py#L330-L362)
 - **Evidence:**
   - Evaluator extracts 64-bit vector IDs from FAISS search results: `retrieved_vector_ids = [int(vid) for vid in raw_ids[0] if vid != -1]`.
   - Maps vector IDs to chunks and document codes via PostgreSQL query:
@@ -71,7 +71,7 @@
 
 ### 3.1 LLM Gateway Integration & Faithfulness Scoring
 - **Verdict:** **PASS**
-- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](backend/app/modules/knowledge/benchmark_evaluator.py#L225-L278)
+- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](../../backend/app/modules/knowledge/benchmark_evaluator.py#L225-L278)
 - **Evidence:**
   - `judge_faithfulness()` constructs a prompt containing the customer question, ground truth answer, and retrieved context snippets.
   - Calls `self.llm_gateway.generate(prompt=prompt, system_instruction=self.JUDGE_SYSTEM_PROMPT, temperature=0.0)`.
@@ -79,7 +79,7 @@
 
 ### 3.2 Retry Limits & Inconclusive Handling
 - **Verdict:** **PASS**
-- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](backend/app/modules/knowledge/benchmark_evaluator.py#L252-L280), [`backend/tests/test_task1_phase3a.py`](backend/tests/test_task1_phase3a.py#L427-L460)
+- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](../../backend/app/modules/knowledge/benchmark_evaluator.py#L252-L280), [`backend/tests/test_task1_phase3a.py`](../../backend/tests/test_task1_phase3a.py#L427-L460)
 - **Evidence:**
   - Retries are strictly bounded: `for attempt in range(max_retries + 1):` with `max_retries = 2` (1 initial attempt + 2 retries = 3 attempts total).
   - If judge call times out or returns unparseable content after retries, returns `(0.0, "LLM judge response was inconclusive or timed out.", True)`.
@@ -89,9 +89,9 @@
 ### 3.3 Live Gemini / Ollama Execution
 - **Verdict:** **NOT TESTED**
 - **Evidence:**
-  - Inspection of [`.env`](.env) confirms `GEMINI_API_KEY` is not configured locally.
+  - Inspection of [`.env`](../../.env) confirms `GEMINI_API_KEY` is not configured locally.
   - Ollama local daemon is not running on `localhost:11434`.
-  - All tests in [`backend/tests/test_task1_phase3a.py`](backend/tests/test_task1_phase3a.py) utilized `MockLLMJudgeProvider` and `judge_override`.
+  - All tests in [`backend/tests/test_task1_phase3a.py`](../../backend/tests/test_task1_phase3a.py) utilized `MockLLMJudgeProvider` and `judge_override`.
   - Live cloud LLM evaluation was **not performed** and is explicitly reported as **NOT TESTED**.
 
 ---
@@ -100,7 +100,7 @@
 
 ### 4.1 Verification of Configured Thresholds
 - **Verdict:** **PASS**
-- **File & Line References:** [`backend/app/core/config.py`](backend/app/core/config.py#L121-L126), [`backend/app/modules/knowledge/benchmark_evaluator.py`](backend/app/modules/knowledge/benchmark_evaluator.py#L432-L442)
+- **File & Line References:** [`backend/app/core/config.py`](../../backend/app/core/config.py#L121-L126), [`backend/app/modules/knowledge/benchmark_evaluator.py`](../../backend/app/modules/knowledge/benchmark_evaluator.py#L432-L442)
 - **Code Inspection:**
   1. `gate_no_inconclusive`: `not suite_is_inconclusive`
   2. `gate_aggregate_grounding`: `aggregate_grounding_score >= settings.BENCHMARK_GROUNDING_PASS_SCORE` (0.90)
@@ -133,7 +133,7 @@
 
 ### 4.5 Baseline Comparison Behavior
 - **Verdict:** **PASS**
-- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](backend/app/modules/knowledge/benchmark_evaluator.py#L304-L309), lines 304–309, 381–384.
+- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](../../backend/app/modules/knowledge/benchmark_evaluator.py#L304-L309), lines 304–309, 381–384.
 - **Evidence:**
   - Evaluator extracts per-query scores from `baseline_run.diagnostics["per_query_details"]`.
   - If a candidate scores lower than the baseline on any critical query, `is_critical_regression` is flagged even if the score is $\ge 0.95$.
@@ -144,7 +144,7 @@
 
 ### 5.1 BenchmarkRun Record & Diagnostics
 - **Verdict:** **PASS**
-- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](backend/app/modules/knowledge/benchmark_evaluator.py#L461-L476)
+- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](../../backend/app/modules/knowledge/benchmark_evaluator.py#L461-L476)
 - **Evidence:**
   - Instantiates `BenchmarkRun` with:
     - `index_id = k_index.id`
@@ -158,7 +158,7 @@
 
 ### 5.2 Transactional Atomicity of Status Updates
 - **Verdict:** **PASS**
-- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](backend/app/modules/knowledge/benchmark_evaluator.py#L478-L491)
+- **File & Line Reference:** [`backend/app/modules/knowledge/benchmark_evaluator.py`](../../backend/app/modules/knowledge/benchmark_evaluator.py#L478-L491)
 - **Evidence:**
   - `k_index.benchmark_score` and `k_index.status` are updated within the same active `AsyncSession`.
   - Committed atomically via `await session.commit()`.

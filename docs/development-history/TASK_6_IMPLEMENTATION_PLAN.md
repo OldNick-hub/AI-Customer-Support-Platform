@@ -40,14 +40,14 @@ To maintain strict architectural boundaries, existing codebase capabilities are 
 
 | Component / Feature | File Path & Exact Line Citation | Verified Behavior |
 | :--- | :--- | :--- |
-| **`Session` Database Schema** | [`backend/app/models/customer.py#L47-L77`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/models/customer.py#L47-L77)<br>[`backend/alembic/versions/001_initial_schema.py#L84-L98`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/alembic/versions/001_initial_schema.py#L84-L98) | Columns: `id`, `customer_id`, `session_token`, `current_language` (VARCHAR(10), default 'en'), `status` (VARCHAR(50), default 'ACTIVE'), `last_activity_at`, `expires_at`, `context_summary` (TEXT), `created_at`. |
-| **`Conversation` Schema** | [`backend/app/models/customer.py#L79-L117`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/models/customer.py#L79-L117)<br>[`backend/alembic/versions/001_initial_schema.py#L101-L118`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/alembic/versions/001_initial_schema.py#L101-L118) | Columns: `id`, `session_id`, `customer_id`, `primary_language` (VARCHAR(10), default 'en'), `status` (default 'OPEN'), `turn_count` (INTEGER, default 0), `started_at`, `last_message_at`. |
-| **`Message` Schema** | [`backend/app/models/customer.py#L119-L152`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/models/customer.py#L119-L152)<br>[`backend/alembic/versions/001_initial_schema.py#L120-L136`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/alembic/versions/001_initial_schema.py#L120-L136) | Columns: `id`, `conversation_id`, `sender_type`, `sender_id`, `content` (TEXT, masked), `encrypted_raw_content` (LargeBinary), `detected_language` (VARCHAR(10)), `language_confidence` (FLOAT), `tokens_used`. |
-| **Customer Session Auth** | [`backend/app/api/deps.py#L182-L218`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/api/deps.py#L182-L218) | Validates `X-Session-Token`. Rejects request if `sess_record.status != "ACTIVE"` or `sess_record.expires_at <= now` with HTTP 401 Unauthorized. |
-| **Security Context Resolver** | [`backend/app/modules/rag/security.py#L132-L180`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/security.py#L132-L180) | Server-side identity resolution enforcing `sess_record.status == "ACTIVE"` and `sess_record.expires_at > now`. Client-supplied role/tier overrides are strictly ignored. |
-| **English Input Sanitizer** | [`backend/app/modules/rag/sanitizer.py#L115-L240`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/sanitizer.py#L115-L240) | Strips zero-width chars, normalizes NFKC, detects base64, scans for English injection directives, masks PII, and preserves order IDs (`ORD-`), policy codes, dates. |
-| **Multi-Provider LLM Gateway** | [`backend/app/services/llm_gateway.py#L350-L450`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/services/llm_gateway.py#L350-L450) | Primary Gemini provider with transient retry logic and automatic failover to local Ollama; temperature=0.0 available for deterministic translation/summarization. |
-| **Canonical Chat API** | [`backend/app/api/v1/chat.py#L147-L260`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/api/v1/chat.py#L147-L260) | Endpoint `POST /api/v1/chat/message` with Pydantic request/response validation, latency tracking, and RAG execution. |
+| **`Session` Database Schema** | [`backend/app/models/customer.py#L47-L77`](../../backend/app/models/customer.py#L47-L77)<br>[`backend/alembic/versions/001_initial_schema.py#L84-L98`](../../backend/alembic/versions/001_initial_schema.py#L84-L98) | Columns: `id`, `customer_id`, `session_token`, `current_language` (VARCHAR(10), default 'en'), `status` (VARCHAR(50), default 'ACTIVE'), `last_activity_at`, `expires_at`, `context_summary` (TEXT), `created_at`. |
+| **`Conversation` Schema** | [`backend/app/models/customer.py#L79-L117`](../../backend/app/models/customer.py#L79-L117)<br>[`backend/alembic/versions/001_initial_schema.py#L101-L118`](../../backend/alembic/versions/001_initial_schema.py#L101-L118) | Columns: `id`, `session_id`, `customer_id`, `primary_language` (VARCHAR(10), default 'en'), `status` (default 'OPEN'), `turn_count` (INTEGER, default 0), `started_at`, `last_message_at`. |
+| **`Message` Schema** | [`backend/app/models/customer.py#L119-L152`](../../backend/app/models/customer.py#L119-L152)<br>[`backend/alembic/versions/001_initial_schema.py#L120-L136`](../../backend/alembic/versions/001_initial_schema.py#L120-L136) | Columns: `id`, `conversation_id`, `sender_type`, `sender_id`, `content` (TEXT, masked), `encrypted_raw_content` (LargeBinary), `detected_language` (VARCHAR(10)), `language_confidence` (FLOAT), `tokens_used`. |
+| **Customer Session Auth** | [`backend/app/api/deps.py#L182-L218`](../../backend/app/api/deps.py#L182-L218) | Validates `X-Session-Token`. Rejects request if `sess_record.status != "ACTIVE"` or `sess_record.expires_at <= now` with HTTP 401 Unauthorized. |
+| **Security Context Resolver** | [`backend/app/modules/rag/security.py#L132-L180`](../../backend/app/modules/rag/security.py#L132-L180) | Server-side identity resolution enforcing `sess_record.status == "ACTIVE"` and `sess_record.expires_at > now`. Client-supplied role/tier overrides are strictly ignored. |
+| **English Input Sanitizer** | [`backend/app/modules/rag/sanitizer.py#L115-L240`](../../backend/app/modules/rag/sanitizer.py#L115-L240) | Strips zero-width chars, normalizes NFKC, detects base64, scans for English injection directives, masks PII, and preserves order IDs (`ORD-`), policy codes, dates. |
+| **Multi-Provider LLM Gateway** | [`backend/app/services/llm_gateway.py#L350-L450`](../../backend/app/services/llm_gateway.py#L350-L450) | Primary Gemini provider with transient retry logic and automatic failover to local Ollama; temperature=0.0 available for deterministic translation/summarization. |
+| **Canonical Chat API** | [`backend/app/api/v1/chat.py#L147-L260`](../../backend/app/api/v1/chat.py#L147-L260) | Endpoint `POST /api/v1/chat/message` with Pydantic request/response validation, latency tracking, and RAG execution. |
 
 ### 2.2. Proposed New Capabilities (To Be Built in Task 6)
 
@@ -160,7 +160,7 @@ To eliminate predictable token attacks and accidental collisions with customer t
 - **Failure Action:** If any validation rule fails, the translation is classified as untrusted. **The system never attempts to restore values into corrupted text.** It aborts and falls back to a pre-rendered localized service notice.
 
 ### 4.3. PII Masking & Restricted Output Restoration Policy
-- **Masking Boundary:** [`PIIMasker`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/services/pii_masker.py) replaces all SSNs, credit cards, emails, and phone numbers before any text leaves the server.
+- **Masking Boundary:** [`PIIMasker`](../../backend/app/services/pii_masker.py) replaces all SSNs, credit cards, emails, and phone numbers before any text leaves the server.
 - **Zero Raw PII to External LLM:** The translation prompt sent to `LLMGateway` contains only generic masks (`[SSN]`, `[CREDIT_CARD]`, `[EMAIL_ADDRESS]`, `[PHONE_NUMBER]`).
 - **Restricted Output Restoration Policy:**
   - **Invariant:** PII is **NEVER** restored into customer-facing output by default.
@@ -191,7 +191,7 @@ To maintain strict compliance with data retention, auditing, and financial regul
 - **Cross-Session Resumption:** If a customer's token expires (`expires_at <= now`) but they re-authenticate to obtain a *new* session token within 24 hours of their last activity, the system may link and restore the previous conversation summary **only after database verification confirms the exact same `customer_id`**.
 
 ### 5.3. Database Authentication Reconciliation Logic
-Existing code in [`backend/app/api/deps.py#L206`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/api/deps.py#L206) and [`backend/app/modules/rag/security.py#L158`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/security.py#L158) is reconciled as follows:
+Existing code in [`backend/app/api/deps.py#L206`](../../backend/app/api/deps.py#L206) and [`backend/app/modules/rag/security.py#L158`](../../backend/app/modules/rag/security.py#L158) is reconciled as follows:
 ```python
 now = datetime.now(timezone.utc)
 
@@ -416,27 +416,27 @@ sequenceDiagram
 ## 9. Complete Proposed File Inventory
 
 ### 9.1. New Subsystem Files (`backend/app/modules/multilingual/`)
-1. [`backend/app/modules/multilingual/__init__.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/multilingual/__init__.py): Clean public exports (`MultilingualOrchestrator`, `LanguageDetector`, `EntityPreserver`, `Translator`, `SessionMemory`, `LifecycleManager`).
-2. [`backend/app/modules/multilingual/config.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/multilingual/config.py): Constants: `SUPPORTED_LANGUAGES`, `MIN_CONFIDENCE_THRESHOLD = 0.85`, `IDLE_TIMEOUT_MINUTES = 30`, `RESTORATION_WINDOW_HOURS = 24`, Redis key templates, and static localized service notices.
-3. [`backend/app/modules/multilingual/security_scanner.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/multilingual/security_scanner.py): Pre-translation prompt injection scanner for Spanish, French, German, and Hindi/Hinglish directive overrides.
-4. [`backend/app/modules/multilingual/entity_preserver.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/multilingual/entity_preserver.py): Cryptographically collision-resistant entity masking (`__PRESERVED_{TYPE}_{TOKEN128}__`), citation shielding, token presence validation, and deterministic restoration.
-5. [`backend/app/modules/multilingual/language_detector.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/multilingual/language_detector.py): Multi-feature Latin-script detector (n-gram statistical profiles + stopword frequency analysis) + Devanagari script analyzer + Tier 2 LLM classifier, enforcing the 0.85 confidence threshold.
-6. [`backend/app/modules/multilingual/translator.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/multilingual/translator.py): Neural translation via `LLMGateway` (`temperature=0.0`), PII-free Redis caching, and localized error degradation.
-7. [`backend/app/modules/multilingual/session_memory.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/multilingual/session_memory.py): 10-turn hot window in Redis with synchronous PostgreSQL persistence and automatic PostgreSQL fallback when Redis is offline.
-8. [`backend/app/modules/multilingual/lifecycle_manager.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/multilingual/lifecycle_manager.py): 30-minute idle state detection, 24-hour summary generation (`sessions.context_summary`), non-destructive archival logic (`ARCHIVED`).
-9. [`backend/app/modules/multilingual/orchestrator.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/multilingual/orchestrator.py): Master `MultilingualOrchestrator` coordinating lifecycle, security scanning, language detection, translation, RAG execution, and response localization.
+1. [`backend/app/modules/multilingual/__init__.py`](../../backend/app/modules/multilingual/__init__.py): Clean public exports (`MultilingualOrchestrator`, `LanguageDetector`, `EntityPreserver`, `Translator`, `SessionMemory`, `LifecycleManager`).
+2. [`backend/app/modules/multilingual/config.py`](../../backend/app/modules/multilingual/config.py): Constants: `SUPPORTED_LANGUAGES`, `MIN_CONFIDENCE_THRESHOLD = 0.85`, `IDLE_TIMEOUT_MINUTES = 30`, `RESTORATION_WINDOW_HOURS = 24`, Redis key templates, and static localized service notices.
+3. [`backend/app/modules/multilingual/security_scanner.py`](../../backend/app/modules/multilingual/security_scanner.py): Pre-translation prompt injection scanner for Spanish, French, German, and Hindi/Hinglish directive overrides.
+4. [`backend/app/modules/multilingual/entity_preserver.py`](../../backend/app/modules/multilingual/entity_preserver.py): Cryptographically collision-resistant entity masking (`__PRESERVED_{TYPE}_{TOKEN128}__`), citation shielding, token presence validation, and deterministic restoration.
+5. [`backend/app/modules/multilingual/language_detector.py`](../../backend/app/modules/multilingual/language_detector.py): Multi-feature Latin-script detector (n-gram statistical profiles + stopword frequency analysis) + Devanagari script analyzer + Tier 2 LLM classifier, enforcing the 0.85 confidence threshold.
+6. [`backend/app/modules/multilingual/translator.py`](../../backend/app/modules/multilingual/translator.py): Neural translation via `LLMGateway` (`temperature=0.0`), PII-free Redis caching, and localized error degradation.
+7. [`backend/app/modules/multilingual/session_memory.py`](../../backend/app/modules/multilingual/session_memory.py): 10-turn hot window in Redis with synchronous PostgreSQL persistence and automatic PostgreSQL fallback when Redis is offline.
+8. [`backend/app/modules/multilingual/lifecycle_manager.py`](../../backend/app/modules/multilingual/lifecycle_manager.py): 30-minute idle state detection, 24-hour summary generation (`sessions.context_summary`), non-destructive archival logic (`ARCHIVED`).
+9. [`backend/app/modules/multilingual/orchestrator.py`](../../backend/app/modules/multilingual/orchestrator.py): Master `MultilingualOrchestrator` coordinating lifecycle, security scanning, language detection, translation, RAG execution, and response localization.
 
 ### 9.2. Existing Files to Adapt (Non-Breaking Modifications)
-1. [`backend/app/api/deps.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/api/deps.py):
+1. [`backend/app/api/deps.py`](../../backend/app/api/deps.py):
    - In `get_auth_context()`, adjust session token resolution to permit resumption for `status == "IDLE_CLOSED"` sessions where `now - last_activity_at <= 24 hours` and `expires_at > now`. Never extend expired tokens.
-2. [`backend/app/modules/rag/security.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/security.py):
+2. [`backend/app/modules/rag/security.py`](../../backend/app/modules/rag/security.py):
    - Mirror `deps.py` reconciliation in `SecurityContextResolver.resolve_from_customer_session()`.
-3. [`backend/app/api/v1/chat.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/api/v1/chat.py):
+3. [`backend/app/api/v1/chat.py`](../../backend/app/api/v1/chat.py):
    - Update `ChatMessageRequest` and `ChatMessageData` schemas with multilingual fields.
    - Route incoming chat turns through `MultilingualOrchestrator`.
 
 ### 9.3. Dedicated Test Suite
-1. [`backend/tests/test_task6_multilingual.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/tests/test_task6_multilingual.py): Complete test matrix covering all 14 verification areas.
+1. [`backend/tests/test_task6_multilingual.py`](../../backend/tests/test_task6_multilingual.py): Complete test matrix covering all 14 verification areas.
 
 ---
 

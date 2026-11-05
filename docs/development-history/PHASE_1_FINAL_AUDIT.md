@@ -32,7 +32,7 @@ All five mandated audit areas were investigated, remediated, hardened, and verif
 ### 2.1 Concurrency: Database-Backed Advisory Lock (`DatabaseAdvisoryLock`)
 - **Vulnerability Identified:** The initial `asyncio.Lock` was process-local. Multiple concurrent worker processes (e.g. Celery workers or multiple Uvicorn worker processes) could run overlapping scans, resulting in race conditions and conflicting document version numbers.
 - **Engineering Resolution:**
-  - Implemented `DatabaseAdvisoryLock` in [`backend/app/modules/knowledge/change_detector.py`](backend/app/modules/knowledge/change_detector.py).
+  - Implemented `DatabaseAdvisoryLock` in [`backend/app/modules/knowledge/change_detector.py`](../../backend/app/modules/knowledge/change_detector.py).
   - On PostgreSQL, it executes `SELECT pg_try_advisory_lock(:lock_id)` polling with exponential backoff up to `timeout_seconds`.
   - On lock timeout, raises `KnowledgeLockTimeoutError` (HTTP 409).
   - Guaranteed release in `__aexit__` via `SELECT pg_advisory_unlock(:lock_id)` within a `try-finally` block.
@@ -78,13 +78,13 @@ All five mandated audit areas were investigated, remediated, hardened, and verif
 
 | File Path | Status | Key Changes Applied |
 | :--- | :--- | :--- |
-| [`backend/app/modules/knowledge/change_detector.py`](backend/app/modules/knowledge/change_detector.py) | **Refactored** | Added `DatabaseAdvisoryLock` (PostgreSQL `pg_try_advisory_lock` with timeout); decoupled Phase A (I/O) from Phase B (DB lock); implemented TOCTOU re-verification; refined scope-aware deduplication. |
-| [`backend/app/modules/knowledge/sanitizer.py`](backend/app/modules/knowledge/sanitizer.py) | **Refactored** | Added symlink rejection (`SYMLINK_NOT_ALLOWED`), path traversal defense (`PATH_TRAVERSAL_ATTEMPT`), disguised binary detection (`DISGUISED_EXECUTABLE`, `MIME_EXTENSION_MISMATCH`), trailing byte PDF tolerance, collision-safe atomic quarantine move, and PII-safe metadata. |
-| [`backend/app/core/config.py`](backend/app/core/config.py) | **Updated** | Added `KB_SCAN_LOCK_TIMEOUT_SECONDS` (10.0s) and `KB_SCAN_ADVISORY_LOCK_ID` (5432001). |
-| [`backend/app/core/exceptions.py`](backend/app/core/exceptions.py) | **Updated** | Added `KnowledgeConcurrencyError` and `KnowledgeLockTimeoutError` (HTTP 409). |
-| [`backend/tests/test_task1_phase1.py`](backend/tests/test_task1_phase1.py) | **Expanded** | Expanded test suite to 19 tests covering concurrency lock timeouts, scope preservation, TOCTOU detection, symlinks, path traversal, PDF variations, and collision-safe quarantine. |
-| [`README.md`](README.md) | **Updated** | Updated test suite badge to `95/95 Passing` and updated documentation index. |
-| [`MASTER_WORK_LOG.md`](MASTER_WORK_LOG.md) | **Updated** | Recorded audit findings, remediations, and verified test logs. |
+| [`backend/app/modules/knowledge/change_detector.py`](../../backend/app/modules/knowledge/change_detector.py) | **Refactored** | Added `DatabaseAdvisoryLock` (PostgreSQL `pg_try_advisory_lock` with timeout); decoupled Phase A (I/O) from Phase B (DB lock); implemented TOCTOU re-verification; refined scope-aware deduplication. |
+| [`backend/app/modules/knowledge/sanitizer.py`](../../backend/app/modules/knowledge/sanitizer.py) | **Refactored** | Added symlink rejection (`SYMLINK_NOT_ALLOWED`), path traversal defense (`PATH_TRAVERSAL_ATTEMPT`), disguised binary detection (`DISGUISED_EXECUTABLE`, `MIME_EXTENSION_MISMATCH`), trailing byte PDF tolerance, collision-safe atomic quarantine move, and PII-safe metadata. |
+| [`backend/app/core/config.py`](../../backend/app/core/config.py) | **Updated** | Added `KB_SCAN_LOCK_TIMEOUT_SECONDS` (10.0s) and `KB_SCAN_ADVISORY_LOCK_ID` (5432001). |
+| [`backend/app/core/exceptions.py`](../../backend/app/core/exceptions.py) | **Updated** | Added `KnowledgeConcurrencyError` and `KnowledgeLockTimeoutError` (HTTP 409). |
+| [`backend/tests/test_task1_phase1.py`](../../backend/tests/test_task1_phase1.py) | **Expanded** | Expanded test suite to 19 tests covering concurrency lock timeouts, scope preservation, TOCTOU detection, symlinks, path traversal, PDF variations, and collision-safe quarantine. |
+| [`README.md`](../../README.md) | **Updated** | Updated test suite badge to `95/95 Passing` and updated documentation index. |
+| [`MASTER_WORK_LOG.md`](../../MASTER_WORK_LOG.md) | **Updated** | Recorded audit findings, remediations, and verified test logs. |
 
 ---
 

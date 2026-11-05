@@ -14,7 +14,7 @@
 Before writing application code, all 7 pre-implementation verification checks were executed:
 
 1. **Database Schema & Status Value Inspection:**
-   - Inspected [`backend/alembic/versions/001_initial_schema.py#L84-L136`](backend/alembic/versions/001_initial_schema.py#L84-L136) and [`backend/app/models/customer.py#L47-L152`](backend/app/models/customer.py#L47-L152).
+   - Inspected [`backend/alembic/versions/001_initial_schema.py#L84-L136`](../../backend/alembic/versions/001_initial_schema.py#L84-L136) and [`backend/app/models/customer.py#L47-L152`](../../backend/app/models/customer.py#L47-L152).
    - Confirmed `sessions.status` is a `VARCHAR(50)` without restrictive enum types or check constraints.
    - Status values `'ACTIVE'`, `'IDLE_CLOSED'`, and `'ARCHIVED'` are completely valid database values.
    - All necessary columns (`current_language`, `status`, `last_activity_at`, `expires_at`, `context_summary` in `sessions`; `primary_language`, `turn_count` in `conversations`; `detected_language`, `language_confidence`, `encrypted_raw_content` in `messages`) are already present in PostgreSQL.
@@ -22,7 +22,7 @@ Before writing application code, all 7 pre-implementation verification checks we
 2. **Relational Integrity:**
    - Verified that `Customer`, `Session`, `Conversation`, and `Message` models feature proper foreign keys, cascade rules (`cascade="all, delete-orphan"`), and bidirectional relationships.
 3. **API Consumer Compatibility:**
-   - Verified that `ChatMessageResponse` and `ChatMessageData` in [`backend/app/api/v1/chat.py`](backend/app/api/v1/chat.py) can safely accept additive multilingual fields with defaults (`detected_language="en"`, `language_confidence=1.0`, `clarification_needed=False`), preserving 100% backward compatibility with all Phase 4D tests.
+   - Verified that `ChatMessageResponse` and `ChatMessageData` in [`backend/app/api/v1/chat.py`](../../backend/app/api/v1/chat.py) can safely accept additive multilingual fields with defaults (`detected_language="en"`, `language_confidence=1.0`, `clarification_needed=False`), preserving 100% backward compatibility with all Phase 4D tests.
 4. **24-Hour Boundary Test Specification:**
    - Added test specifications covering `expires_at - 1s`, `expires_at`, `expires_at + 1s`, `24h - 1s`, and `24h + 1s` to the implementation plan.
 5. **Authentication Reconciliation:**
@@ -33,7 +33,7 @@ Before writing application code, all 7 pre-implementation verification checks we
 ## 2. Phase 1: Implementation Summary
 
 ### 2.1. Module Files Authored
-1. [`backend/app/modules/multilingual/config.py`](backend/app/modules/multilingual/config.py):
+1. [`backend/app/modules/multilingual/config.py`](../../backend/app/modules/multilingual/config.py):
    - Defined `SUPPORTED_LANGUAGES = {"en", "es", "fr", "de", "hi"}` and `SUPPORTED_SCRIPTS`.
    - Tunable parameter: `MIN_CONFIDENCE_THRESHOLD = 0.85`.
    - Lifecycle parameters: `IDLE_TIMEOUT_MINUTES = 30`, `RESTORATION_WINDOW_HOURS = 24`, `HOT_CONTEXT_WINDOW_SIZE = 10`.
@@ -42,7 +42,7 @@ Before writing application code, all 7 pre-implementation verification checks we
    - Polite multilingual clarification prompt.
    - Entity regex patterns and 128-bit placeholder validation pattern `PLACEHOLDER_REGEX`.
 
-2. [`backend/app/modules/multilingual/security_scanner.py`](backend/app/modules/multilingual/security_scanner.py):
+2. [`backend/app/modules/multilingual/security_scanner.py`](../../backend/app/modules/multilingual/security_scanner.py):
    - Implemented `PreTranslationSecurityScanner`.
    - Strips invisible zero-width and directional control characters (`\u200b-\u200f`, `\u202a-\u202e`, `\ufeff`, `\u00ad`).
    - Normalizes text via Unicode NFKC and URL decodes candidate payloads.
@@ -52,7 +52,7 @@ Before writing application code, all 7 pre-implementation verification checks we
    - Enforces length boundary ($> 2000$).
    - Returns typed `PreTranslationSecurityResult(clean_text, is_safe, risk_detected, risk_reason, quarantined)`.
 
-3. [`backend/app/modules/multilingual/entity_preserver.py`](backend/app/modules/multilingual/entity_preserver.py):
+3. [`backend/app/modules/multilingual/entity_preserver.py`](../../backend/app/modules/multilingual/entity_preserver.py):
    - Implemented `EntityPreservationVault`.
    - Generates cryptographically secure 128-bit random tokens via `secrets.token_hex(16)` (32 hex characters): `__PRESERVED_{TYPE}_{TOKEN128}__`.
    - Masks orders (`ORD-12345`), policy codes (`POL-RET-US-2026`), SKUs (`SKU-99881`), dates (`2026-11-04`), currency amounts (`$49.99`, `€120`, `₹500`), and citations (`[1]`, `[2]`, compound `[1, 2]`).
@@ -64,7 +64,7 @@ Before writing application code, all 7 pre-implementation verification checks we
    - Implements safe unmasking (`restore_entities()`): raises `ValueError` if placeholder validation fails, guaranteeing that values are **never** restored into unverified or corrupted text.
    - Request-scoped isolation: tokens are cryptographically distinct per request vault.
 
-4. [`backend/app/modules/multilingual/language_detector.py`](backend/app/modules/multilingual/language_detector.py):
+4. [`backend/app/modules/multilingual/language_detector.py`](../../backend/app/modules/multilingual/language_detector.py):
    - Implemented `LanguageDetector`.
    - Tier 1A: Unicode block analyzer for Devanagari (`[\u0900-\u097F]`), identifying `hi-Deva` mapped to canonical `hi` (confidence $\ge 0.98$).
    - Tier 1B: Multi-feature Latin-script n-gram and stopword frequency analyzer detecting `en`, `es`, `fr`, `de`, and Romanized Hinglish `hi-Latn` mapped to canonical `hi` (confidence $\ge 0.85$).
@@ -72,10 +72,10 @@ Before writing application code, all 7 pre-implementation verification checks we
    - Zero Silent English: ambiguous or low-confidence inputs return `detected_language = "und"`, `detected_script = None`, `language_confidence = 0.0`, `clarification_needed = True`, `clarification_reason = "LOW_CONFIDENCE_DETECTION"`, and `suggested_languages = ["de", "en", "es", "fr", "hi"]`.
    - Preferred language prior: resolves short ambiguous greetings without contradiction when a client preference is specified.
 
-5. [`backend/app/modules/multilingual/__init__.py`](backend/app/modules/multilingual/__init__.py):
+5. [`backend/app/modules/multilingual/__init__.py`](../../backend/app/modules/multilingual/__init__.py):
    - Package initialization exposing all public Phase 1 components.
 
-6. [`backend/tests/test_task6_phase1.py`](backend/tests/test_task6_phase1.py):
+6. [`backend/tests/test_task6_phase1.py`](../../backend/tests/test_task6_phase1.py):
    - Authored 28 dedicated unit tests covering all Phase 1 components.
 
 ---

@@ -26,7 +26,7 @@ Key guarantees established in Phase 3A:
 
 ## 2. Benchmark Dataset Specification (`golden_qa_v1.json`)
 
-Located at [`backend/app/modules/knowledge/benchmarks/golden_qa_v1.json`](backend/app/modules/knowledge/benchmarks/golden_qa_v1.json).
+Located at [`backend/app/modules/knowledge/benchmarks/golden_qa_v1.json`](../../backend/app/modules/knowledge/benchmarks/golden_qa_v1.json).
 
 ### 2.1 Category Breakdown & Sample Sizes
 
@@ -56,7 +56,7 @@ Located at [`backend/app/modules/knowledge/benchmarks/golden_qa_v1.json`](backen
 
 ## 3. Evaluator Implementation Details
 
-Implemented in [`backend/app/modules/knowledge/benchmark_evaluator.py`](backend/app/modules/knowledge/benchmark_evaluator.py).
+Implemented in [`backend/app/modules/knowledge/benchmark_evaluator.py`](../../backend/app/modules/knowledge/benchmark_evaluator.py).
 
 ### 3.1 Scoring Workflow
 

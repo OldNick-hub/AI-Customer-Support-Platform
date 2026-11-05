@@ -19,8 +19,8 @@ This audit establishes the live integration between the **Unified Intelligent Cu
 3. **Application Configuration Updated:** Enhanced `app.core.config.Settings` with URL-safe credential encoding (`urllib.parse.quote_plus`), multi-directory `.env` resolution, and PostgreSQL 16 async defaults.
 4. **Alembic Migration Architecture:** Verified revision `001_initial_schema` generating PostgreSQL 16 transactional DDL covering all 20 domain tables, 35+ indexes, 18 foreign keys, and the dedicated `document_chunks_faiss_vector_id_seq` sequence.
 5. **Disposable Database Downgrade Testing:** Formulated and automated downgrade testing against a temporary disposable database (`ai_customer_support_disposable_test`), guaranteeing that the working database is never subjected to destructive downgrade operations.
-6. **Automated Integration & Migration Tool:** Authored [`backend/scripts/setup_and_verify_postgres.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/scripts/setup_and_verify_postgres.py) to safely verify/create the database, execute migrations, audit catalogs, seed data, and test downgrades in one automated workflow.
-7. **PostgreSQL Integration Test Suite:** Created [`backend/tests/test_postgres_integration.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/tests/test_postgres_integration.py) containing 6 live tests verifying sequence auto-incrementation, native JSON queries, bytea encryption, and seed integrity.
+6. **Automated Integration & Migration Tool:** Authored [`backend/scripts/setup_and_verify_postgres.py`](../../backend/scripts/setup_and_verify_postgres.py) to safely verify/create the database, execute migrations, audit catalogs, seed data, and test downgrades in one automated workflow.
+7. **PostgreSQL Integration Test Suite:** Created [`backend/tests/test_postgres_integration.py`](../../backend/tests/test_postgres_integration.py) containing 6 live tests verifying sequence auto-incrementation, native JSON queries, bytea encryption, and seed integrity.
 8. **Regression Verification:** Executed the complete 28-test test suite with **28 passed, 0 failed, 0 warnings**.
 
 ---
@@ -74,7 +74,7 @@ SELECT 1 FROM pg_database WHERE datname = 'ai_customer_support';
 CREATE DATABASE ai_customer_support WITH ENCODING = 'UTF8';
 ```
 
-This procedure is built into [`backend/scripts/setup_and_verify_postgres.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/scripts/setup_and_verify_postgres.py), which connects to `postgres`, checks `pg_database`, and provisions `ai_customer_support` if missing.
+This procedure is built into [`backend/scripts/setup_and_verify_postgres.py`](../../backend/scripts/setup_and_verify_postgres.py), which connects to `postgres`, checks `pg_database`, and provisions `ai_customer_support` if missing.
 
 #### Connection URL Derivation & Special Character Encoding
 Connection strings dynamically URL-encode username and password values using `urllib.parse.quote_plus`, preventing connection string parsing errors if passwords contain special characters (`@`, `#`, `!`, `%`, `$`, `:`):
@@ -89,7 +89,7 @@ Connection strings dynamically URL-encode username and password values using `ur
 ## 4. Phase 3 — Alembic Migration Audit & Verification
 
 ### Migration Script Inspection
-- **Active Revision:** [`001_initial_schema.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/alembic/versions/001_initial_schema.py)
+- **Active Revision:** [`001_initial_schema.py`](../../backend/alembic/versions/001_initial_schema.py)
 - **Down Revision:** `None` (Initial Schema)
 - **Target Metadata:** `Base.metadata` (20 domain models)
 

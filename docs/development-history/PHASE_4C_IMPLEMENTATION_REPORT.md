@@ -14,18 +14,18 @@
 Prior to altering any code, a comprehensive pre-implementation inspection of all related architecture documents, services, and tests was executed:
 
 1. **Phase 4A & Phase 4B Baseline:**
-   - [`backend/app/modules/rag/security.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/security.py): Verified server-side identity resolver (`SecurityContextResolver`), customer tier resolution (`PUBLIC`, `REGISTERED`, `VIP`), staff role matrices (`AGENT`, `SUPERVISOR`, `ADMIN`), and safe global non-statutory categories (`SAFE_GLOBAL_CATEGORIES`).
-   - [`backend/app/modules/rag/retriever.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/retriever.py): Verified 3-layer retriever (`SecurityAwareRetriever`), Layer 1 relational pre-filtering, Layer 2 FAISS `IDSelectorBatch` search, Layer 3 zero-trust validation, temporal policy pruning (`effective_from <= query_date <= effective_until`), and statutory keyword gating.
-   - [`backend/app/modules/rag/generator.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/generator.py): Verified evidence-grounded answer generator (`GroundedAnswerGenerator`), LLM gateway integration with `temperature=0.0`, instruction/data separation (`<authoritative_data>`), and claim-to-passage alignment verification loop.
-   - [`backend/app/modules/rag/citation.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/citation.py): Verified `CitationManager`, `CitationMetadata`, and `ClaimCitationVerifier` checking inline citations `[X]`, numeric/date alignment, and single-shot controlled remediation.
+   - [`backend/app/modules/rag/security.py`](../../backend/app/modules/rag/security.py): Verified server-side identity resolver (`SecurityContextResolver`), customer tier resolution (`PUBLIC`, `REGISTERED`, `VIP`), staff role matrices (`AGENT`, `SUPERVISOR`, `ADMIN`), and safe global non-statutory categories (`SAFE_GLOBAL_CATEGORIES`).
+   - [`backend/app/modules/rag/retriever.py`](../../backend/app/modules/rag/retriever.py): Verified 3-layer retriever (`SecurityAwareRetriever`), Layer 1 relational pre-filtering, Layer 2 FAISS `IDSelectorBatch` search, Layer 3 zero-trust validation, temporal policy pruning (`effective_from <= query_date <= effective_until`), and statutory keyword gating.
+   - [`backend/app/modules/rag/generator.py`](../../backend/app/modules/rag/generator.py): Verified evidence-grounded answer generator (`GroundedAnswerGenerator`), LLM gateway integration with `temperature=0.0`, instruction/data separation (`<authoritative_data>`), and claim-to-passage alignment verification loop.
+   - [`backend/app/modules/rag/citation.py`](../../backend/app/modules/rag/citation.py): Verified `CitationManager`, `CitationMetadata`, and `ClaimCitationVerifier` checking inline citations `[X]`, numeric/date alignment, and single-shot controlled remediation.
    - Verified that Phase 4A had 17/17 dedicated passing tests, Phase 4B had 27/27 dedicated passing tests, and the platform regression suite had 226/226 tests passing before Phase 4C.
 
 2. **PII Masker Service & Token Infrastructure:**
-   - [`backend/app/services/pii_masker.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/services/pii_masker.py): Inspected `PIIMasker` and `PIIMaskingEngine`. Verified Luhn-checked credit card detection, CVV masking (`CVV: [REDACTED]`), SSN masking, email masking, and phone masking. Verified that `PIIMasker` provides stateless masking without caching sensitive data.
+   - [`backend/app/services/pii_masker.py`](../../backend/app/services/pii_masker.py): Inspected `PIIMasker` and `PIIMaskingEngine`. Verified Luhn-checked credit card detection, CVV masking (`CVV: [REDACTED]`), SSN masking, email masking, and phone masking. Verified that `PIIMasker` provides stateless masking without caching sensitive data.
 
 3. **Core Exceptions & Configuration:**
-   - [`backend/app/core/exceptions.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/core/exceptions.py): Identified existing RAG exceptions: `RAGError`, `RAGAuthorizationError`, `RAGSecurityQuarantineError`, `RAGPolicyConflictError`. Added `RAGSanitizationError` for typed sanitizer exception handling.
-   - [`backend/app/core/config.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/core/config.py): Verified RAG similarity thresholds (`RAG_SIMILARITY_THRESHOLD_DEFAULT=0.72`, `RAG_SIMILARITY_THRESHOLD_POLICY=0.76`, `RAG_SIMILARITY_THRESHOLD_FAQ=0.70`).
+   - [`backend/app/core/exceptions.py`](../../backend/app/core/exceptions.py): Identified existing RAG exceptions: `RAGError`, `RAGAuthorizationError`, `RAGSecurityQuarantineError`, `RAGPolicyConflictError`. Added `RAGSanitizationError` for typed sanitizer exception handling.
+   - [`backend/app/core/config.py`](../../backend/app/core/config.py): Verified RAG similarity thresholds (`RAG_SIMILARITY_THRESHOLD_DEFAULT=0.72`, `RAG_SIMILARITY_THRESHOLD_POLICY=0.76`, `RAG_SIMILARITY_THRESHOLD_FAQ=0.70`).
 
 4. **Production Invariant Verification:**
    - Inspected `storage/indices/active_index.json`: Verified absent (`False`). Confirmed no production FAISS vector index was loaded or mutated.
@@ -35,7 +35,7 @@ Prior to altering any code, a comprehensive pre-implementation inspection of all
 
 ## 2. Architecture Followed
 
-The implementation adheres strictly to the approved architecture in [`DAY_06_TASK_4_ARCHITECTURE_PLAN.md`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/DAY_06_TASK_4_ARCHITECTURE_PLAN.md):
+The implementation adheres strictly to the approved architecture in [`TASK_4_ARCHITECTURE_PLAN.md`](TASK_4_ARCHITECTURE_PLAN.md):
 
 ```mermaid
 flowchart TD
@@ -64,14 +64,14 @@ flowchart TD
 
 | File | Action | Description |
 | :--- | :--- | :--- |
-| [`backend/app/modules/rag/sanitizer.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/sanitizer.py) | **Created** | Implements `RAGSanitizer`, `SanitizationResult`, `get_rag_sanitizer()`. Encapsulates input adversarial threat detection, delimiter neutralization, entity preservation, and output PII scrubbing. |
-| [`backend/app/modules/rag/orchestrator.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/orchestrator.py) | **Created** | Implements `RAGOrchestrator`, `RAGInternalRequest`, and `RAGKnowledgeAssistant` facade. Manages end-to-end lifecycle, retrieval refusal short-circuiting, and structured refusal formatting. |
-| [`backend/app/modules/rag/generator.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/generator.py) | **Modified** | Added optional `correlation_id: Optional[str] = None` to `RAGResolutionResult` model for end-to-end distributed tracing. |
-| [`backend/app/modules/rag/__init__.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/__init__.py) | **Modified** | Exported `RAGSanitizer`, `SanitizationResult`, `get_rag_sanitizer`, `RAGInternalRequest`, `RAGOrchestrator`, and `RAGKnowledgeAssistant`. |
-| [`backend/app/core/exceptions.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/core/exceptions.py) | **Modified** | Added `RAGSanitizationError` (HTTP 422) inheriting from `RAGError`. |
-| [`backend/tests/test_task4_phase4c.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/tests/test_task4_phase4c.py) | **Created** | 27 dedicated unit, integration, and security tests covering all Phase 4C scenarios. |
-| [`MASTER_WORK_LOG.md`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/MASTER_WORK_LOG.md) | **Modified** | Updated master engineering work log with Task 4 Phase 4A, 4B, and 4C entries. |
-| [`README.md`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/README.md) | **Modified** | Updated project roadmap progress for Day 06 Task 4. |
+| [`backend/app/modules/rag/sanitizer.py`](../../backend/app/modules/rag/sanitizer.py) | **Created** | Implements `RAGSanitizer`, `SanitizationResult`, `get_rag_sanitizer()`. Encapsulates input adversarial threat detection, delimiter neutralization, entity preservation, and output PII scrubbing. |
+| [`backend/app/modules/rag/orchestrator.py`](../../backend/app/modules/rag/orchestrator.py) | **Created** | Implements `RAGOrchestrator`, `RAGInternalRequest`, and `RAGKnowledgeAssistant` facade. Manages end-to-end lifecycle, retrieval refusal short-circuiting, and structured refusal formatting. |
+| [`backend/app/modules/rag/generator.py`](../../backend/app/modules/rag/generator.py) | **Modified** | Added optional `correlation_id: Optional[str] = None` to `RAGResolutionResult` model for end-to-end distributed tracing. |
+| [`backend/app/modules/rag/__init__.py`](../../backend/app/modules/rag/__init__.py) | **Modified** | Exported `RAGSanitizer`, `SanitizationResult`, `get_rag_sanitizer`, `RAGInternalRequest`, `RAGOrchestrator`, and `RAGKnowledgeAssistant`. |
+| [`backend/app/core/exceptions.py`](../../backend/app/core/exceptions.py) | **Modified** | Added `RAGSanitizationError` (HTTP 422) inheriting from `RAGError`. |
+| [`backend/tests/test_task4_phase4c.py`](../../backend/tests/test_task4_phase4c.py) | **Created** | 27 dedicated unit, integration, and security tests covering all Phase 4C scenarios. |
+| [`MASTER_WORK_LOG.md`](../../MASTER_WORK_LOG.md) | **Modified** | Updated master engineering work log with Task 4 Phase 4A, 4B, and 4C entries. |
+| [`README.md`](../../README.md) | **Modified** | Updated project roadmap progress for Day 06 Task 4. |
 
 ---
 
@@ -176,7 +176,7 @@ To avoid blindly destroying useful identifiers, `RAGSanitizer` implements a two-
 
 ## 8. Test Scenarios and Exact Results
 
-The dedicated test suite [`backend/tests/test_task4_phase4c.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/tests/test_task4_phase4c.py) was executed.
+The dedicated test suite [`backend/tests/test_task4_phase4c.py`](../../backend/tests/test_task4_phase4c.py) was executed.
 
 **Result: 27 / 27 PASSED in 10.34s**
 

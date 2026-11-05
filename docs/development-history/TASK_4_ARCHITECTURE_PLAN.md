@@ -101,7 +101,7 @@ flowchart TD
 1. **FAISS Index Management:** Task 4 does **NOT** build, rebuild, promote, or mutate FAISS indexes. It exclusively consumes the active in-memory index maintained by `ActiveIndexReader.get_index()` and `get_active_version_tag()`.
 2. **Embedding Inference:** Task 4 does **NOT** instantiate separate SentenceTransformer models. It calls `EmbeddingService.encode_sync()` via the existing threadpool singleton.
 3. **LLM Inference:** Task 4 does **NOT** make raw SDK calls. It invokes `LLMGateway.generate()` with temperature `0.0` for deterministic factuality.
-4. **Data Models:** Task 4 utilizes existing models [`Document`](backend/app/models/document.py#L34), [`DocumentVersion`](backend/app/models/document.py#L62), and [`DocumentChunk`](backend/app/models/document.py#L101). No redundant metadata tables or schema migrations are created.
+4. **Data Models:** Task 4 utilizes existing models [`Document`](../../backend/app/models/document.py#L34), [`DocumentVersion`](../../backend/app/models/document.py#L62), and [`DocumentChunk`](../../backend/app/models/document.py#L101). No redundant metadata tables or schema migrations are created.
 
 ---
 
@@ -387,7 +387,7 @@ ABSOLUTE SECURITY DIRECTIVES:
 ```
 
 ### 6.3 Adversarial Test Matrix
-The test suite [`test_task4_rag.py`](backend/tests/test_task4_rag.py) explicitly validates resistance against:
+The test suite [`test_task4_rag.py`](../../backend/tests/test_task4_rag.py) explicitly validates resistance against:
 1. **Direct Injections:** User attempts prompt hijacking in query text.
 2. **Indirect Injections:** Knowledge document contains embedded override directives.
 3. **Encoded Injections:** Base64, Hex, and URL-encoded instructions.
@@ -578,7 +578,7 @@ An inspection of `backend/app/models/document.py`, `auth.py`, and `customer.py` 
 
 ## 11. Hidden Evaluation Scenarios & Comprehensive Test Strategy
 
-The dedicated test suite [`backend/tests/test_task4_rag.py`](backend/tests/test_task4_rag.py) implements **16 rigorous test scenarios** verifying all failure modes:
+The dedicated test suite [`backend/tests/test_task4_rag.py`](../../backend/tests/test_task4_rag.py) implements **16 rigorous test scenarios** verifying all failure modes:
 
 ```mermaid
 flowchart TD
@@ -615,18 +615,18 @@ flowchart LR
     P3 --> P4["Phase 4D<br/>API Router, Interservice<br/>Contracts & Regression Suite"]
 ```
 
-- **Phase 4A: Security Context & Three-Layer Retriever** ([`backend/app/modules/rag/retriever.py`](backend/app/modules/rag/retriever.py))
+- **Phase 4A: Security Context & Three-Layer Retriever** ([`backend/app/modules/rag/retriever.py`](../../backend/app/modules/rag/retriever.py))
   - Implements `SecurityContextResolver` and `SecurityAwareRetriever`.
   - Layer 1 PostgreSQL pre-pruning enforcing unknown-region default-deny, role-based matrices (`AGENT`, `SUPERVISOR`, `ADMIN`), temporal range, and product line.
   - Layer 2 FAISS `IDSelectorBatch` + Layer 3 validation gate.
-- **Phase 4B: Grounded Generator, Citations & Claim Verifier** ([`backend/app/modules/rag/generator.py`](backend/app/modules/rag/generator.py), [`citation.py`](backend/app/modules/rag/citation.py), [`verifier.py`](backend/app/modules/rag/verifier.py))
+- **Phase 4B: Grounded Generator, Citations & Claim Verifier** ([`backend/app/modules/rag/generator.py`](../../backend/app/modules/rag/generator.py), [`citation.py`](../../backend/app/modules/rag/citation.py), [`verifier.py`](../../backend/app/modules/rag/verifier.py))
   - Implements `GroundedAnswerGenerator`, `CitationFormatter`, and `ClaimCitationVerifier`.
   - Claim proposition extraction, numeric alignment, and remediation loop.
-- **Phase 4C: Sanitizer, Abstention Engine & Threshold Calibration** ([`backend/app/modules/rag/assistant.py`](backend/app/modules/rag/assistant.py), [`sanitizer.py`](backend/app/modules/rag/sanitizer.py))
+- **Phase 4C: Sanitizer, Abstention Engine & Threshold Calibration** ([`backend/app/modules/rag/assistant.py`](../../backend/app/modules/rag/assistant.py), [`sanitizer.py`](../../backend/app/modules/rag/sanitizer.py))
   - Implements `RAGSanitizer` with chunk quarantine and blocking.
   - Implements mandatory abstention on contradictory policies and borderline confidence.
   - Implements calibration dataset sweep harness.
-- **Phase 4D: API Router, Interservice Contracts & Regression Suite** ([`backend/app/api/v1/rag.py`](backend/app/api/v1/rag.py), [`test_task4_rag.py`](backend/tests/test_task4_rag.py))
+- **Phase 4D: API Router, Interservice Contracts & Regression Suite** ([`backend/app/api/v1/rag.py`](../../backend/app/api/v1/rag.py), [`test_task4_rag.py`](../../backend/tests/test_task4_rag.py))
   - REST endpoint `POST /api/v1/knowledge/query`, exports facade, and runs full 182-test regression verification.
 
 ---

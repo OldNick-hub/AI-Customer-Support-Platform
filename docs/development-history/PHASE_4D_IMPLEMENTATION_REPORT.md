@@ -11,7 +11,7 @@
 
 ## 1. Executive Summary
 
-Phase 4D provides the production-grade HTTP REST interface for the Day 06 Task 4 RAG Knowledge Assistant. Building directly upon the approved Phase 4A Security-Aware Retriever, Phase 4B Grounded Generator & Citation Verifier, and Phase 4C Orchestrator & Sanitizer Vault, Phase 4D exposes the canonical `POST /api/v1/chat/message` contract documented in [`docs/architecture/API_SPECIFICATION.md`](docs/architecture/API_SPECIFICATION.md).
+Phase 4D provides the production-grade HTTP REST interface for the Day 06 Task 4 RAG Knowledge Assistant. Building directly upon the approved Phase 4A Security-Aware Retriever, Phase 4B Grounded Generator & Citation Verifier, and Phase 4C Orchestrator & Sanitizer Vault, Phase 4D exposes the canonical `POST /api/v1/chat/message` contract documented in [`docs/architecture/API_SPECIFICATION.md`](../architecture/API_SPECIFICATION.md).
 
 All access to the chat endpoint is strictly authenticated and authenticated server-side. Anonymous access is strictly prohibited with `HTTP 401 Unauthorized`. Client-supplied roles, access levels, customer IDs, or security contexts are rejected outright with `HTTP 422 Unprocessable Content`. Server-side identity resolution strictly determines user permissions, permitted regions, and customer tiers.
 
@@ -25,12 +25,12 @@ The following files were authored and integrated:
 
 | Component | File Path | Responsibilities |
 | :--- | :--- | :--- |
-| **API Root Package** | [`backend/app/api/__init__.py`](backend/app/api/__init__.py) | Initializes the API package namespace. |
-| **API Dependencies** | [`backend/app/api/deps.py`](backend/app/api/deps.py) | Database session injection (`get_db`), correlation ID extraction (`get_correlation_id`), authoritative server-side credential resolution (`get_auth_context`), and RAG orchestrator singleton (`get_rag_orchestrator`). |
-| **API v1 Aggregator** | [`backend/app/api/v1/__init__.py`](backend/app/api/v1/__init__.py) | Aggregates all v1 sub-routers under `api_v1_router` (`/api/v1`). |
-| **Canonical Chat Router** | [`backend/app/api/v1/chat.py`](backend/app/api/v1/chat.py) | Exposes `POST /api/v1/chat/message` with Pydantic request/response validation (`extra="forbid"`), citation mapping, refusal handling, and ticket suggestion payload binding. |
-| **FastAPI Application Root** | [`backend/app/main.py`](backend/app/main.py) | Application factory with minimal decoupled lifespan (`ActiveIndexReader.sync_on_startup()` only), correlation ID middleware, CORS middleware, global RFC 7807 problem details handlers, and live/ready health probes (`/api/v1/health/live`, `/api/v1/health/ready`). |
-| **Phase 4D Test Suite** | [`backend/tests/test_task4_phase4d.py`](backend/tests/test_task4_phase4d.py) | 29 asynchronous test cases covering authentication fail-closed, conflicting credentials, JWT validation, zero client trust, historical date propagation, domain refusals, prompt injection defense, PII protection, correlation ID echo, and exception shielding. |
+| **API Root Package** | [`backend/app/api/__init__.py`](../../backend/app/api/__init__.py) | Initializes the API package namespace. |
+| **API Dependencies** | [`backend/app/api/deps.py`](../../backend/app/api/deps.py) | Database session injection (`get_db`), correlation ID extraction (`get_correlation_id`), authoritative server-side credential resolution (`get_auth_context`), and RAG orchestrator singleton (`get_rag_orchestrator`). |
+| **API v1 Aggregator** | [`backend/app/api/v1/__init__.py`](../../backend/app/api/v1/__init__.py) | Aggregates all v1 sub-routers under `api_v1_router` (`/api/v1`). |
+| **Canonical Chat Router** | [`backend/app/api/v1/chat.py`](../../backend/app/api/v1/chat.py) | Exposes `POST /api/v1/chat/message` with Pydantic request/response validation (`extra="forbid"`), citation mapping, refusal handling, and ticket suggestion payload binding. |
+| **FastAPI Application Root** | [`backend/app/main.py`](../../backend/app/main.py) | Application factory with minimal decoupled lifespan (`ActiveIndexReader.sync_on_startup()` only), correlation ID middleware, CORS middleware, global RFC 7807 problem details handlers, and live/ready health probes (`/api/v1/health/live`, `/api/v1/health/ready`). |
+| **Phase 4D Test Suite** | [`backend/tests/test_task4_phase4d.py`](../../backend/tests/test_task4_phase4d.py) | 29 asynchronous test cases covering authentication fail-closed, conflicting credentials, JWT validation, zero client trust, historical date propagation, domain refusals, prompt injection defense, PII protection, correlation ID echo, and exception shielding. |
 
 ---
 
@@ -231,7 +231,7 @@ Executed with:
    - Output: Only `001_initial_schema.py`
    - Result: Zero new migrations created. Zero database schema modifications.
 3. **Decoupled Worker Lifespan:**
-   - In [`backend/app/main.py`](backend/app/main.py), the FastAPI lifespan exclusively invokes `ActiveIndexReader.sync_on_startup()` and initializes connection pools.
+   - In [`backend/app/main.py`](../../backend/app/main.py), the FastAPI lifespan exclusively invokes `ActiveIndexReader.sync_on_startup()` and initializes connection pools.
    - Background canary schedulers (`watchdog.start_monitoring_scheduler()`) are cleanly quarantined to dedicated Celery worker processes (`backend/app/lifecycle.py`), preventing duplicate scheduling loops in the web tier.
 
 ---

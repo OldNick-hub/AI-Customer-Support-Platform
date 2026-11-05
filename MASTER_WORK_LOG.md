@@ -28,7 +28,7 @@ flowchart LR
   - Standardized all 6 business capabilities under a unified modular monolith architecture.
   - Compiled [`PRODUCT_REQUIREMENTS.md`](docs/architecture/PRODUCT_REQUIREMENTS.md) with 41 detailed requirements in the Requirements Traceability Matrix (RTM-01 through RTM-41).
   - Drafted comprehensive specifications: [`SYSTEM_ARCHITECTURE.md`](docs/architecture/SYSTEM_ARCHITECTURE.md), [`DATABASE_DESIGN.md`](docs/architecture/DATABASE_DESIGN.md), [`API_SPECIFICATION.md`](docs/architecture/API_SPECIFICATION.md), [`SECURITY_ARCHITECTURE.md`](docs/architecture/SECURITY_ARCHITECTURE.md), [`TESTING_STRATEGY.md`](docs/architecture/TESTING_STRATEGY.md), [`TECHNOLOGY_DECISIONS.md`](docs/architecture/TECHNOLOGY_DECISIONS.md), [`PROJECT_STRUCTURE.md`](docs/architecture/PROJECT_STRUCTURE.md), [`MODULE_DEPENDENCIES.md`](docs/architecture/MODULE_DEPENDENCIES.md).
-  - Resolved 10 critical audit findings in [`ARCHITECTURE_AUDIT_RESOLUTION.md`](ARCHITECTURE_AUDIT_RESOLUTION.md): FAISS BIGINT vector ID mapping, index watchdog state persistence in PostgreSQL, metadata pre-retrieval filtering, customer vs admin auth tokens, and 3-second fast path with 30-second background evidence execution.
+  - Resolved 10 critical audit findings in [`ARCHITECTURE_AUDIT_RESOLUTION.md`](docs/development-history/ARCHITECTURE_AUDIT_RESOLUTION.md): FAISS BIGINT vector ID mapping, index watchdog state persistence in PostgreSQL, metadata pre-retrieval filtering, customer vs admin auth tokens, and 3-second fast path with 30-second background evidence execution.
 
 ---
 
@@ -149,7 +149,7 @@ Implemented the complete suite of foundational services supporting Tasks 1 throu
 ## Day 04 — Task 1: Knowledge Base Pipeline (Phase 1: Ingestion, Sanitization & Change Detection)
 
 ### 1. Scope & Execution Overview
-Implemented Phase 1 of Task 1 (Knowledge Base Update & Monitoring Pipeline) adhering to [DAY_04_TASK_1_ARCHITECTURE_PLAN.md](DAY_04_TASK_1_ARCHITECTURE_PLAN.md) Version 3.0.0. All changes reused the existing Day 02 database schema with **zero schema migrations**.
+Implemented Phase 1 of Task 1 (Knowledge Base Update & Monitoring Pipeline) adhering to [TASK_1_ARCHITECTURE_PLAN.md](docs/development-history/TASK_1_ARCHITECTURE_PLAN.md) Version 3.0.0. All changes reused the existing Day 02 database schema with **zero schema migrations**.
 
 ### 2. Implementation Deliverables
 
@@ -210,10 +210,10 @@ Conducted deep engineering audit across concurrency, scope deduplication, origin
 **Date:** 2026-11-01  
 **Test Baseline:** **107 / 107 Passing** (100% green across entire platform)  
 **Execution Time:** 18.51 seconds  
-**Reference Report:** [`DAY_04_PHASE_2_REPORT.md`](DAY_04_PHASE_2_REPORT.md)  
+**Reference Report:** [`PHASE_2_REPORT.md`](docs/development-history/PHASE_2_REPORT.md)  
 
 ### 1. Scope & Execution Overview
-Implemented Phase 2 of Task 1 (Structure-Aware Chunking, Dense Vector Embeddings, Deterministic Candidate Selection, and Isolated FAISS Vector Index Construction) adhering to [`DAY_04_TASK_1_ARCHITECTURE_PLAN.md`](DAY_04_TASK_1_ARCHITECTURE_PLAN.md) Version 3.0.0. All changes reused the existing Day 02 database schema with **zero schema migrations**.
+Implemented Phase 2 of Task 1 (Structure-Aware Chunking, Dense Vector Embeddings, Deterministic Candidate Selection, and Isolated FAISS Vector Index Construction) adhering to [`TASK_1_ARCHITECTURE_PLAN.md`](docs/development-history/TASK_1_ARCHITECTURE_PLAN.md) Version 3.0.0. All changes reused the existing Day 02 database schema with **zero schema migrations**.
 
 ### 2. Implementation Deliverables
 
@@ -263,7 +263,7 @@ Implemented Phase 2 of Task 1 (Structure-Aware Chunking, Dense Vector Embeddings
 - **Phase 2 Initial Test Suite:** **107 / 107 tests passing** in 18.51 seconds.
 
 ### 5. Phase 2 Independent Engineering Audit & Remediation
-Conducted strict code-level audit ([`DAY_04_PHASE_2_INDEPENDENT_AUDIT.md`](DAY_04_PHASE_2_INDEPENDENT_AUDIT.md)) and implemented controlled remediations ([`DAY_04_PHASE_2_REMEDIATION_REPORT.md`](DAY_04_PHASE_2_REMEDIATION_REPORT.md)):
+Conducted strict code-level audit ([`PHASE_2_INDEPENDENT_AUDIT.md`](docs/development-history/PHASE_2_INDEPENDENT_AUDIT.md)) and implemented controlled remediations ([`PHASE_2_REMEDIATION_REPORT.md`](docs/development-history/PHASE_2_REMEDIATION_REPORT.md)):
 1. **Chunker Section Overlap Leakage (HIGH):** Implemented `flush_chunk(reset_overlap=True)` at Markdown headings and PDF page boundaries. Verified that sentences from Billing Policy (`"Payment must be in USD."`) are strictly prevented from leaking into Technical Support chunks.
 2. **Sanitizer Cross-Volume Quarantine Integrity (HIGH):** Implemented verified copy protocol on cross-device moves (`EXDEV`), verifying destination SHA-256 before deleting original. Original is preserved if copying or verification fails.
 3. **Transaction-Scoped Advisory Lock Lifecycle (HIGH):** Replaced session-level locking with `SELECT pg_try_advisory_xact_lock(:lock_id)`. Lock is automatically and deterministically released by the PostgreSQL kernel on commit, rollback, cancellation, or connection loss.
@@ -307,7 +307,7 @@ Conducted strict code-level audit ([`DAY_04_PHASE_2_INDEPENDENT_AUDIT.md`](DAY_0
 - **Verification & Test Suite:**
   - Dedicated Phase 3A test suite [`backend/tests/test_task1_phase3a.py`](backend/tests/test_task1_phase3a.py): **9 / 9 PASSED** in 27.37s.
   - Full platform regression suite: **123 / 123 PASSED** in 45.90s (100% green).
-- **Deliverable:** Created [`DAY_05_PHASE_3A_BENCHMARK_REPORT.md`](DAY_05_PHASE_3A_BENCHMARK_REPORT.md) and [`DAY_05_PHASE_3A_FINAL_AUDIT.md`](DAY_05_PHASE_3A_FINAL_AUDIT.md).
+- **Deliverable:** Created [`PHASE_3A_BENCHMARK_REPORT.md`](docs/development-history/PHASE_3A_BENCHMARK_REPORT.md) and [`PHASE_3A_FINAL_AUDIT.md`](docs/development-history/PHASE_3A_FINAL_AUDIT.md).
 - **Status:** **COMPLETED & AUDITED**.
 
 ### Phase 3B: Maintenance Window Enforcement (Completed)
@@ -325,7 +325,7 @@ Conducted strict code-level audit ([`DAY_04_PHASE_2_INDEPENDENT_AUDIT.md`](DAY_0
 - **Verification & Test Suite:**
   - Dedicated Phase 3B test suite [`backend/tests/test_task1_phase3b.py`](backend/tests/test_task1_phase3b.py): **15 / 15 PASSED** in 7.62s.
   - Full platform regression suite: **138 / 138 PASSED** in 20.86s (100% green).
-- **Deliverable:** Created [`DAY_05_PHASE_3B_MAINTENANCE_REPORT.md`](DAY_05_PHASE_3B_MAINTENANCE_REPORT.md).
+- **Deliverable:** Created [`PHASE_3B_MAINTENANCE_REPORT.md`](docs/development-history/PHASE_3B_MAINTENANCE_REPORT.md).
 - **Status:** **COMPLETED & ACCEPTED**.
 
 ### Phase 3C: Atomic Candidate Index Promotion & Crash Reconciliation (Completed)
@@ -346,7 +346,7 @@ Conducted strict code-level audit ([`DAY_04_PHASE_2_INDEPENDENT_AUDIT.md`](DAY_0
 - **Verification & Test Suite:**
   - Dedicated Phase 3C test suite [`backend/tests/test_task1_phase3c.py`](backend/tests/test_task1_phase3c.py): **20 / 20 PASSED** in 25.31s.
   - Full platform regression suite: **158 / 158 PASSED** in 42.44s (100% green).
-- **Deliverable:** Created [`DAY_05_PHASE_3C_PROMOTION_REPORT.md`](DAY_05_PHASE_3C_PROMOTION_REPORT.md) and [`DAY_05_PHASE_3C_FINAL_AUDIT.md`](DAY_05_PHASE_3C_FINAL_AUDIT.md).
+- **Deliverable:** Created [`PHASE_3C_PROMOTION_REPORT.md`](docs/development-history/PHASE_3C_PROMOTION_REPORT.md) and [`PHASE_3C_FINAL_AUDIT.md`](docs/development-history/PHASE_3C_FINAL_AUDIT.md).
 - **Status:** **COMPLETED & APPROVED**.
 
 ### Phase 3D: Automated Rollback Watchdog & Health Canary Engine (Completed & Runtime Integrated)
@@ -372,7 +372,7 @@ Conducted strict code-level audit ([`DAY_04_PHASE_2_INDEPENDENT_AUDIT.md`](DAY_0
 - **Verification & Test Suite:**
   - Dedicated Phase 3D test suite [`backend/tests/test_task1_phase3d.py`](backend/tests/test_task1_phase3d.py): **24 / 24 PASSED** in 17.62s.
   - Full platform regression suite: **182 / 182 PASSED** in 39.61s (100% green).
-- **Deliverable:** Created [`DAY_05_PHASE_3D_FINAL_AUDIT.md`](DAY_05_PHASE_3D_FINAL_AUDIT.md).
+- **Deliverable:** Created [`PHASE_3D_FINAL_AUDIT.md`](docs/development-history/PHASE_3D_FINAL_AUDIT.md).
 - **Status:** **COMPLETED & AUDITED**.
 
 ---
@@ -411,7 +411,7 @@ Conducted strict code-level audit ([`DAY_04_PHASE_2_INDEPENDENT_AUDIT.md`](DAY_0
   - Full platform regression suite: **277 / 277 PASSED** in 57.14s (100% green; zero regressions).
   - Production FAISS index invariant: `storage/indices/active_index.json` confirmed `False` (absent and untouched).
   - Phase 4D scope invariant: `backend/app/api/v1/rag.py` confirmed `False` (unopened).
-- **Deliverables:** Created [`DAY_06_PHASE_4C_IMPLEMENTATION_REPORT.md`](DAY_06_PHASE_4C_IMPLEMENTATION_REPORT.md), [`DAY_06_PHASE_4C_FINAL_SECURITY_AUDIT.md`](DAY_06_PHASE_4C_FINAL_SECURITY_AUDIT.md), and [`DAY_06_PHASE_4C_FINAL_SIGNOFF.md`](DAY_06_PHASE_4C_FINAL_SIGNOFF.md).
+- **Deliverables:** Created [`PHASE_4C_IMPLEMENTATION_REPORT.md`](docs/development-history/PHASE_4C_IMPLEMENTATION_REPORT.md), [`PHASE_4C_FINAL_SECURITY_AUDIT.md`](docs/development-history/PHASE_4C_FINAL_SECURITY_AUDIT.md), and [`PHASE_4C_FINAL_SIGNOFF.md`](docs/development-history/PHASE_4C_FINAL_SIGNOFF.md).
 - **Status:** **COMPLETED, HARDENED, FORMALLY AUDITED & SIGNED OFF — READY FOR PHASE 4D**.
 
 ### Phase 4D: REST API Router (Completed, Verified & Integrated)
@@ -430,7 +430,7 @@ Conducted strict code-level audit ([`DAY_04_PHASE_2_INDEPENDENT_AUDIT.md`](DAY_0
   - Full platform regression suite: **314 / 314 PASSED** in 42.35s (100% green; zero regressions, zero warnings).
   - Production FAISS index invariant: `storage/indices/active_index.json` confirmed `False` (absent and unmutated).
   - Schema invariant: Zero new Alembic migrations; only initial schema migration exists.
-- **Deliverables:** Created and updated [`DAY_06_PHASE_4D_IMPLEMENTATION_REPORT.md`](DAY_06_PHASE_4D_IMPLEMENTATION_REPORT.md).
+- **Deliverables:** Created and updated [`PHASE_4D_IMPLEMENTATION_REPORT.md`](docs/development-history/PHASE_4D_IMPLEMENTATION_REPORT.md).
 - **Status:** **COMPLETED, FULLY HARDENED, VERIFIED & PRODUCTION READY**.
 
 ---
@@ -462,7 +462,7 @@ Conducted strict code-level audit ([`DAY_04_PHASE_2_INDEPENDENT_AUDIT.md`](DAY_0
   - Full platform regression suite: **354 / 354 PASSED** in 67.35s (314 baseline + 40 Phase 1; zero failures, zero warnings).
   - Production FAISS index invariant: `storage/indices/active_index.json` confirmed `False` (absent and unmutated).
   - Database schema invariant: Zero new migrations created.
-- **Deliverables:** Authored [`DAY_07_PHASE_1_IMPLEMENTATION_REPORT.md`](DAY_07_PHASE_1_IMPLEMENTATION_REPORT.md).
+- **Deliverables:** Authored [`PHASE_1_IMPLEMENTATION_REPORT.md`](docs/development-history/PHASE_1_IMPLEMENTATION_REPORT.md).
 - **Status:** **PHASE 0 & PHASE 1 COMPLETED, AUDITED & VERIFIED**.
 
 ### Phase 2: Translation Service, Redis Isolation & Resilience (Completed, Hardened & Audited)
@@ -491,7 +491,7 @@ Conducted strict code-level audit ([`DAY_04_PHASE_2_INDEPENDENT_AUDIT.md`](DAY_0
   - Full platform regression suite: **386 / 386 PASSED** in 42.41s (zero failures, zero warnings).
   - Production FAISS index invariant: `storage/indices/active_index.json` confirmed `False` (absent and unmutated).
   - Database schema invariant: Zero new migrations created.
-- **Deliverables:** Authored [`DAY_07_PHASE_2_IMPLEMENTATION_REPORT.md`](DAY_07_PHASE_2_IMPLEMENTATION_REPORT.md).
+- **Deliverables:** Authored [`PHASE_2_IMPLEMENTATION_REPORT.md`](docs/development-history/PHASE_2_IMPLEMENTATION_REPORT.md).
 - **Status:** **PHASE 2 COMPLETED, HARDENED & AUDITED**.
 
 ### Phase 3: Conversation Lifecycle & Context Restoration (Completed & Verified)
@@ -517,7 +517,7 @@ Conducted strict code-level audit ([`DAY_04_PHASE_2_INDEPENDENT_AUDIT.md`](DAY_0
   - Full platform regression suite: **420 / 420 PASSED** in 43.07s (zero failures, zero warnings).
   - Production FAISS index invariant: `storage/indices/active_index.json` confirmed `False` (absent and unmutated).
   - Database schema invariant: Zero new migrations created.
-- **Deliverables:** Authored [`DAY_07_PHASE_3_IMPLEMENTATION_REPORT.md`](DAY_07_PHASE_3_IMPLEMENTATION_REPORT.md) and [`DAY_07_PHASE_3_SECURITY_AUDIT_REPORT.md`](DAY_07_PHASE_3_SECURITY_AUDIT_REPORT.md).
+- **Deliverables:** Authored [`PHASE_3_IMPLEMENTATION_REPORT.md`](docs/development-history/PHASE_3_IMPLEMENTATION_REPORT.md) and [`PHASE_3_SECURITY_AUDIT_REPORT.md`](docs/development-history/PHASE_3_SECURITY_AUDIT_REPORT.md).
 - **Status:** **PHASE 3 AUDITED, HARDENED & VERIFIED — STOPPED PENDING REVIEW & PHASE 4 AUTHORIZATION**.
 
 

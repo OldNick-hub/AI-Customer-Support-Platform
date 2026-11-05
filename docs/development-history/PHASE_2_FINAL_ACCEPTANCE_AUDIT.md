@@ -13,7 +13,7 @@
 
 ### 1.1 Lock Persistence Throughout Protected Critical Section
 - **Verdict:** **PASS**
-- **File & Line References:** [`backend/app/modules/knowledge/change_detector.py`](backend/app/modules/knowledge/change_detector.py#L88-L116), lines 88–116, 398–580.
+- **File & Line References:** [`backend/app/modules/knowledge/change_detector.py`](../../backend/app/modules/knowledge/change_detector.py#L88-L116), lines 88–116, 398–580.
 - **Code Inspection:**
   - In `DatabaseAdvisoryLock.acquire()`, lines 92–98 execute `SELECT pg_try_advisory_xact_lock(:lock_id)`.
   - In PostgreSQL, transaction-scoped advisory locks remain held for the entire duration of the active transaction until `COMMIT` or `ROLLBACK`.
@@ -32,7 +32,7 @@
 
 ### 1.2 Coroutine Cancellation While Lock is Held
 - **Verdict:** **PASS**
-- **File & Line References:** [`backend/app/modules/knowledge/change_detector.py`](backend/app/modules/knowledge/change_detector.py#L62-L63), lines 62–63, 117–126.
+- **File & Line References:** [`backend/app/modules/knowledge/change_detector.py`](../../backend/app/modules/knowledge/change_detector.py#L62-L63), lines 62–63, 117–126.
 - **Code Inspection:**
   - `DatabaseAdvisoryLock` implements `__aexit__`, which invokes `await self.release()`.
   - Lines 121–123 check `if self.session.is_active and self.session.in_transaction(): await self.session.rollback()`.
@@ -47,7 +47,7 @@
 
 ### 1.3 SQLAlchemy Rollback / Transaction Closure
 - **Verdict:** **PASS**
-- **File & Line References:** [`backend/app/modules/knowledge/change_detector.py`](backend/app/modules/knowledge/change_detector.py#L121-L126), lines 121–126.
+- **File & Line References:** [`backend/app/modules/knowledge/change_detector.py`](../../backend/app/modules/knowledge/change_detector.py#L121-L126), lines 121–126.
 - **Code Inspection:**
   - In `release()`:
     ```python
@@ -66,7 +66,7 @@
 
 ### 1.4 Second Independent PostgreSQL Connection Acquisition
 - **Verdict:** **PASS**
-- **File & Line References:** [`backend/tests/test_postgres_integration.py`](backend/tests/test_postgres_integration.py#L295-L338), lines 295–338.
+- **File & Line References:** [`backend/tests/test_postgres_integration.py`](../../backend/tests/test_postgres_integration.py#L295-L338), lines 295–338.
 - **Code Inspection:**
   - `test_pg_advisory_lock_competing_sessions` instantiates two independent sessions from `session_factory = async_sessionmaker(bind=pg_engine, class_=AsyncSession, expire_on_commit=False)` connected to PostgreSQL 16.
   - Verifies Session 2 times out with `KnowledgeLockTimeoutError` while Session 1 holds the lock.
@@ -81,7 +81,7 @@
 
 ### 1.5 Connection Loss Lock Release
 - **Verdict:** **PASS**
-- **File & Line References:** [`backend/app/modules/knowledge/change_detector.py`](backend/app/modules/knowledge/change_detector.py#L88-L100).
+- **File & Line References:** [`backend/app/modules/knowledge/change_detector.py`](../../backend/app/modules/knowledge/change_detector.py#L88-L100).
 - **Code Inspection:**
   - Because transaction-scoped locking (`pg_try_advisory_xact_lock`) is used instead of session-scoped locking (`pg_try_advisory_lock`), lock ownership is tied to the PostgreSQL backend transaction.
   - If a client crashes, disconnects, or the network drops, PostgreSQL detects EOF on the client socket, terminates the backend process, rolls back the uncommitted transaction, and immediately frees all transaction advisory locks.
@@ -96,7 +96,7 @@
 
 ### 2.1 Temporary Destination on Target Filesystem
 - **Verdict:** **PASS**
-- **File & Line References:** [`backend/app/modules/knowledge/sanitizer.py`](backend/app/modules/knowledge/sanitizer.py#L402-L420), lines 402–420.
+- **File & Line References:** [`backend/app/modules/knowledge/sanitizer.py`](../../backend/app/modules/knowledge/sanitizer.py#L402-L420), lines 402–420.
 - **Code Inspection:**
   - Line 402: Ensures `self.quarantine_dir` exists.
   - Line 406: `dest_path = os.path.join(self.quarantine_dir, dest_filename)`.
@@ -111,7 +111,7 @@
 
 ### 2.2 SHA-256 Digest Verification Before Publication
 - **Verdict:** **PASS**
-- **File & Line References:** [`backend/app/modules/knowledge/sanitizer.py`](backend/app/modules/knowledge/sanitizer.py#L421-L430), lines 421–430.
+- **File & Line References:** [`backend/app/modules/knowledge/sanitizer.py`](../../backend/app/modules/knowledge/sanitizer.py#L421-L430), lines 421–430.
 - **Code Inspection:**
   - Line 421: Copies data to temporary target: `shutil.copy2(file_path, tmp_dest_path)`.
   - Line 423: Computes SHA-256 of the copied destination: `computed_hash = self.compute_file_sha256(tmp_dest_path)`.
@@ -135,7 +135,7 @@
 
 ### 2.3 Atomic Publication via `os.replace` on Destination Filesystem
 - **Verdict:** **PASS**
-- **File & Line References:** [`backend/app/modules/knowledge/sanitizer.py`](backend/app/modules/knowledge/sanitizer.py#L432-L434), lines 432–434.
+- **File & Line References:** [`backend/app/modules/knowledge/sanitizer.py`](../../backend/app/modules/knowledge/sanitizer.py#L432-L434), lines 432–434.
 - **Code Inspection:**
   - Line 432: `os.replace(tmp_dest_path, dest_path)`.
   - Because `tmp_dest_path` and `dest_path` share the same parent directory (`self.quarantine_dir`), `os.replace` is guaranteed atomic by POSIX `rename()` and Windows `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`.
@@ -149,7 +149,7 @@
 
 ### 2.4 Original Source File Retention on Failure
 - **Verdict:** **PASS**
-- **File & Line References:** [`backend/app/modules/knowledge/sanitizer.py`](backend/app/modules/knowledge/sanitizer.py#L435-L442), lines 435–442.
+- **File & Line References:** [`backend/app/modules/knowledge/sanitizer.py`](../../backend/app/modules/knowledge/sanitizer.py#L435-L442), lines 435–442.
 - **Code Inspection:**
   - `os.remove(file_path)` is placed at line 434, following copy, hash verification, and publication.
   - If `shutil.copy2` fails, `compute_file_sha256` fails, hash mismatch occurs, or `os.replace` fails, control transfers to `except Exception as copy_exc:`.
@@ -166,7 +166,7 @@
 
 ### 2.5 Existing Destination Collision
 - **Verdict:** **PASS**
-- **File & Line References:** [`backend/app/modules/knowledge/sanitizer.py`](backend/app/modules/knowledge/sanitizer.py#L404-L406), lines 404–406.
+- **File & Line References:** [`backend/app/modules/knowledge/sanitizer.py`](../../backend/app/modules/knowledge/sanitizer.py#L404-L406), lines 404–406.
 - **Code Inspection:**
   - `dest_filename = f"{timestamp}_{uuid.uuid4().hex[:8]}_{safe_base}"`.
   - Timestamp includes microseconds (`%Y%m%d_%H%M%S_%f`) combined with 8 random hex characters ($16^8 \approx 4.29 \times 10^9$ combinations per microsecond).

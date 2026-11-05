@@ -28,7 +28,7 @@
 | **6. Phase 1 Outstanding Conditions** | **ACTION REQUIRED** | **RESOLVED & VERIFIED** — Transaction-scoped `pg_try_advisory_xact_lock` implemented; live competing session test added to `test_postgres_integration.py`; verified cross-volume copy protocol with SHA-256 validation. |
 
 > [!NOTE]
-> All eight audit findings were remediated and verified. Complete platform regression suite stands at **114 / 114 passing tests**. See [`DAY_04_PHASE_2_REMEDIATION_REPORT.md`](DAY_04_PHASE_2_REMEDIATION_REPORT.md).
+> All eight audit findings were remediated and verified. Complete platform regression suite stands at **114 / 114 passing tests**. See [`PHASE_2_REMEDIATION_REPORT.md`](PHASE_2_REMEDIATION_REPORT.md).
 
 ---
 

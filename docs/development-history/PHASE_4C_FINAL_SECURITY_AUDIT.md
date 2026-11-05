@@ -43,7 +43,7 @@ Six vulnerabilities were identified (2 High, 3 Medium, 1 Low), immediate fixes w
 
 #### Finding 1.1: Precedence Inversion (High Severity — VULN-4C-01)
 - **Vulnerability:** In `RAGOrchestrator.process_query()`, the identity resolution block evaluated `if request.security_context: sec_ctx = request.security_context` prior to resolving server-side session credentials. If a caller provided an expired/low-privileged `session_token` alongside an in-memory `security_context` with elevated roles, the server-side session token check was bypassed.
-- **Fix Applied:** Inverted precedence in [`backend/app/modules/rag/orchestrator.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/orchestrator.py). Whenever credentials (`session_token`, `user_id_or_email`, or `jwt_claims`) are provided, `SecurityContextResolver.resolve(session=session, ...)` is strictly invoked, completely overriding any supplied context.
+- **Fix Applied:** Inverted precedence in [`backend/app/modules/rag/orchestrator.py`](../../backend/app/modules/rag/orchestrator.py). Whenever credentials (`session_token`, `user_id_or_email`, or `jwt_claims`) are provided, `SecurityContextResolver.resolve(session=session, ...)` is strictly invoked, completely overriding any supplied context.
 - **Verification:** Verified by `test_audit_session_token_precedence_over_security_context`.
 
 #### Finding 1.2: Serialized Context Dict Injection (High Severity — VULN-4C-02)

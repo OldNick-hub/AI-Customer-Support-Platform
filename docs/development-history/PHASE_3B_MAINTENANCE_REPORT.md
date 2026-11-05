@@ -25,7 +25,7 @@ Key guarantees established in Phase 3B:
 
 ## 2. Maintenance Window Configuration & Architecture
 
-Implemented in [`backend/app/modules/knowledge/maintenance.py`](backend/app/modules/knowledge/maintenance.py).
+Implemented in [`backend/app/modules/knowledge/maintenance.py`](../../backend/app/modules/knowledge/maintenance.py).
 
 ### 2.1 Pydantic Domain Models
 

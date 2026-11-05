@@ -77,7 +77,7 @@ Tables match exactly? True
 
 ### Findings & Implementation
 1. **Database Representation:** All primary keys and foreign keys were instantiated in PostgreSQL as `character varying(36)`.
-2. **Resolution:** Updated `GUID` in [`backend/app/db/base.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/db/base.py) to bind and load as `String(36)` across all dialects.
+2. **Resolution:** Updated `GUID` in [`backend/app/db/base.py`](../../backend/app/db/base.py) to bind and load as `String(36)` across all dialects.
 3. **Application Transparency:** The application layer continuously handles standard Python `uuid.UUID` objects. The `TypeDecorator` converts incoming `uuid.UUID` instances to strings upon persistence and reconstructs `uuid.UUID` instances upon loading.
 4. **Relational Joins:** Verified multi-hop joins across models without PostgreSQL type-cast errors:
    - `User` $\leftrightarrow$ `UserRole` $\leftrightarrow$ `Role`
@@ -142,7 +142,7 @@ ALL IDEMPOTENCY CHECKS PASSED!
 
 ## 7. Setup Script End-to-End Execution (`setup_and_verify_postgres.py`)
 
-Executed [`backend/scripts/setup_and_verify_postgres.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/scripts/setup_and_verify_postgres.py) end-to-end. All 6 phases completed with exit code 0:
+Executed [`backend/scripts/setup_and_verify_postgres.py`](../../backend/scripts/setup_and_verify_postgres.py) end-to-end. All 6 phases completed with exit code 0:
 
 ```
 ======================================================================
@@ -188,15 +188,15 @@ DAY 02 - POSTGRESQL 16 INTEGRATION & INTEGRITY AUDIT
 
 1. **`skills` Column Type Mismatch:**
    - *Problem:* `001_initial_schema.py` created `users.skills` as `json`, while `auth.py` mapped it to `StringArrayType` (`VARCHAR[]`).
-   - *Resolution:* Mapped `User.skills` to `JSONBType` in [`auth.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/models/auth.py#L65). PostgreSQL now serializes skills cleanly into the native `json` column without table alterations.
+   - *Resolution:* Mapped `User.skills` to `JSONBType` in [`auth.py`](../../backend/app/models/auth.py#L65). PostgreSQL now serializes skills cleanly into the native `json` column without table alterations.
 2. **Missing `import io` in Setup Script:**
-   - *Problem:* [`setup_and_verify_postgres.py#L40`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/scripts/setup_and_verify_postgres.py#L40) caught `io.UnsupportedOperation` without importing `io`.
+   - *Problem:* [`setup_and_verify_postgres.py#L40`](../../backend/scripts/setup_and_verify_postgres.py#L40) caught `io.UnsupportedOperation` without importing `io`.
    - *Resolution:* Added standard-library `import io`.
 3. **`GUID` Join Operator Error:**
    - *Problem:* `GUID` loaded `PG_UUID(as_uuid=True)` while DB tables used `VARCHAR(36)`, causing `operator does not exist: character varying = uuid` during joins.
    - *Resolution:* Standardized `GUID` to bind and load `String(36)` across all dialects.
 4. **Alembic `env.py` URL Overwrite Bug:**
-   - *Problem:* [`alembic/env.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/alembic/env.py#L34) unconditionally overwrote `config.get_main_option("sqlalchemy.url")` with `settings.async_database_url`, causing disposable tests to inadvertently target the working database.
+   - *Problem:* [`alembic/env.py`](../../backend/alembic/env.py#L34) unconditionally overwrote `config.get_main_option("sqlalchemy.url")` with `settings.async_database_url`, causing disposable tests to inadvertently target the working database.
    - *Resolution:* Updated `alembic/env.py` to only set `sqlalchemy.url` if not already explicitly provided.
 
 ---

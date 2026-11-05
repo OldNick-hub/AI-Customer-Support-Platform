@@ -4,8 +4,8 @@
 **Status:** Completed & Formally Verified  
 **Regression Test Baseline:** **114 / 114 Passing** (100% green across entire platform)  
 **Execution Time:** 19.07 seconds  
-**Architecture Plan Reference:** [`DAY_04_TASK_1_ARCHITECTURE_PLAN.md`](DAY_04_TASK_1_ARCHITECTURE_PLAN.md) (Version 3.0.0)  
-**Remediation Report Reference:** [`DAY_04_PHASE_2_REMEDIATION_REPORT.md`](DAY_04_PHASE_2_REMEDIATION_REPORT.md)  
+**Architecture Plan Reference:** [`TASK_1_ARCHITECTURE_PLAN.md`](TASK_1_ARCHITECTURE_PLAN.md) (Version 3.0.0)  
+**Remediation Report Reference:** [`PHASE_2_REMEDIATION_REPORT.md`](PHASE_2_REMEDIATION_REPORT.md)  
 
 ---
 
@@ -25,7 +25,7 @@ All implementations strictly adhere to the approved architecture plan and databa
 ## 2. Core Components Implemented
 
 ### 2.1 Structure-Aware Document Chunker (`chunker.py`)
-- **Module:** [`backend/app/modules/knowledge/chunker.py`](backend/app/modules/knowledge/chunker.py)
+- **Module:** [`backend/app/modules/knowledge/chunker.py`](../../backend/app/modules/knowledge/chunker.py)
 - **Class:** `StructureAwareChunker`
 - **Model:** `ExtractedChunk`
 
@@ -50,7 +50,7 @@ All implementations strictly adhere to the approved architecture plan and databa
 ---
 
 ### 2.2 Dense Vector Embedding Integration
-- Reuses the singleton `EmbeddingService` from Day 03 ([`backend/app/services/embedding_service.py`](backend/app/services/embedding_service.py)).
+- Reuses the singleton `EmbeddingService` from Day 03 ([`backend/app/services/embedding_service.py`](../../backend/app/services/embedding_service.py)).
 - **Model:** HuggingFace `sentence-transformers/all-MiniLM-L6-v2` loaded once as a process singleton.
 - **Dimensions:** 384-dimensional dense vectors.
 - **Normalization:** Vectors are $L_2$ unit-normalized (`np.linalg.norm(v) == 1.0`), ensuring cosine similarity is mathematically identical to inner product (`IndexFlatIP`).
@@ -60,7 +60,7 @@ All implementations strictly adhere to the approved architecture plan and databa
 ---
 
 ### 2.3 Deterministic Candidate Version Selection
-- **Module:** [`backend/app/modules/knowledge/vector_builder.py`](backend/app/modules/knowledge/vector_builder.py)
+- **Module:** [`backend/app/modules/knowledge/vector_builder.py`](../../backend/app/modules/knowledge/vector_builder.py)
 - **Method:** `CandidateVectorBuilder.select_candidate_versions(session)`
 
 #### Invariants Enforced:
@@ -75,7 +75,7 @@ All implementations strictly adhere to the approved architecture plan and databa
 ---
 
 ### 2.4 FAISS Candidate Index Construction & Isolation
-- **Module:** [`backend/app/modules/knowledge/vector_builder.py`](backend/app/modules/knowledge/vector_builder.py)
+- **Module:** [`backend/app/modules/knowledge/vector_builder.py`](../../backend/app/modules/knowledge/vector_builder.py)
 - **Class:** `CandidateVectorBuilder`
 - **Data Model:** `CandidateBuildResult`
 

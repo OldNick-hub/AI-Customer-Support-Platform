@@ -17,25 +17,25 @@
 
 Before formulating this specification, read-only forensic inspections of the existing production schema, models, connection configurations, and migration environments were conducted:
 
-1. **[`backend/app/core/config.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/core/config.py) (lines 39–48, 201–225):**
+1. **[`backend/app/core/config.py`](../../backend/app/core/config.py) (lines 39–48, 201–225):**
    - Database connection settings: `POSTGRES_USER: str = "postgres"`, `POSTGRES_PASSWORD: str = ""`, `POSTGRES_HOST: str = "localhost"`, `POSTGRES_PORT: int = 5432`, `POSTGRES_DB: str = "ai_customer_support"`.
    - `async_database_url` generates `postgresql+asyncpg://...` using `POSTGRES_USER`.
    - `sync_database_url` generates `postgresql+psycopg2://...` using `POSTGRES_USER`.
    - **Key Architectural Finding:** Both the runtime application engine and the Alembic migration runner share a single configured database connection string (`POSTGRES_USER`). In development/testing, this is the default PostgreSQL superuser/owner. In production, role separation (`app_user` vs. `migration_admin`) must be enforced as a deployment prerequisite.
 
-2. **[`backend/app/db/session.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/db/session.py) (lines 1–55):**
+2. **[`backend/app/db/session.py`](../../backend/app/db/session.py) (lines 1–55):**
    - Configures `AsyncSessionLocal` using `async_engine` bound to `settings.async_database_url`.
    - Configures `sync_engine` using `create_engine` bound to `settings.sync_database_url`.
 
-3. **[`backend/alembic/env.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/alembic/env.py) (lines 1–60):**
+3. **[`backend/alembic/env.py`](../../backend/alembic/env.py) (lines 1–60):**
    - Alembic imports `settings.async_database_url` and binds `target_metadata = Base.metadata`.
    - Runs migrations inside a single synchronous/async transaction block (`with context.begin_transaction():`).
 
-4. **[`backend/alembic/versions/001_initial_schema.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/alembic/versions/001_initial_schema.py) (lines 108–136):**
+4. **[`backend/alembic/versions/001_initial_schema.py`](../../backend/alembic/versions/001_initial_schema.py) (lines 108–136):**
    - Table `conversations` (lines 108–118): Defines `turn_count: sa.Integer(), nullable=False, server_default="0"`.
    - Table `messages` (lines 119–136): Defines columns `id String(36)`, `conversation_id String(36)`, `sender_type String(20)`, `sender_id String(36)`, `content Text`, `encrypted_raw_content LargeBinary`, `detected_language String(10)`, `language_confidence Float`, `tokens_used Integer`, `created_at DateTime(timezone=True)`.
 
-5. **[`backend/app/models/customer.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/models/customer.py) (lines 80–152):**
+5. **[`backend/app/models/customer.py`](../../backend/app/models/customer.py) (lines 80–152):**
    - Model `Message` nullability audit:
      - `id: Mapped[uuid.UUID]` (non-nullable PK).
      - `conversation_id: Mapped[uuid.UUID]` (`nullable=False`).
@@ -46,12 +46,12 @@ Before formulating this specification, read-only forensic inspections of the exi
      - `turn_sequence_number: Mapped[Optional[int]]` (**`nullable=True`**).
 
 6. **Repository-Wide PostgreSQL Role & Privilege Configuration Audit:**
-   - **[`backend/app/core/config.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/core/config.py#L39-L48) (lines 39–48, 201–225):** Configures default connection: `POSTGRES_USER: str = "postgres"`, `POSTGRES_PASSWORD: str = ""`. Both `async_database_url` (runtime FastAPI engine) and `sync_database_url` (migration engine) construct connection URLs using `POSTGRES_USER`.
+   - **[`backend/app/core/config.py`](../../backend/app/core/config.py#L39-L48) (lines 39–48, 201–225):** Configures default connection: `POSTGRES_USER: str = "postgres"`, `POSTGRES_PASSWORD: str = ""`. Both `async_database_url` (runtime FastAPI engine) and `sync_database_url` (migration engine) construct connection URLs using `POSTGRES_USER`.
    - **[`.env`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/.env#L18) (line 18):** Defines `POSTGRES_USER=postgres`, `POSTGRES_PASSWORD=Mahi2208`.
    - **[`docker-compose.yml`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/docker-compose.yml#L11-L14) (lines 11–14):** Configures `POSTGRES_USER: ${POSTGRES_USER:-support_admin}`, `POSTGRES_DB: ${POSTGRES_DB:-customer_support_db}`.
-   - **[`backend/scripts/setup_and_verify_postgres.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/scripts/setup_and_verify_postgres.py#L34-L140) (lines 34–140):** Connects as `settings.POSTGRES_USER` for database creation, Alembic execution, schema auditing, and seeding.
-   - **[`backend/tests/test_postgres_integration.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/tests/test_postgres_integration.py#L31-L48) (lines 31–48):** Live integration test suite binds `AsyncEngine` directly to `settings.async_database_url` (`POSTGRES_USER`).
-   - **[`backend/alembic/env.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/alembic/env.py#L33-L38) (lines 33–38):** Migration runner binds to `settings.async_database_url` (`POSTGRES_USER`).
+   - **[`backend/scripts/setup_and_verify_postgres.py`](../../backend/scripts/setup_and_verify_postgres.py#L34-L140) (lines 34–140):** Connects as `settings.POSTGRES_USER` for database creation, Alembic execution, schema auditing, and seeding.
+   - **[`backend/tests/test_postgres_integration.py`](../../backend/tests/test_postgres_integration.py#L31-L48) (lines 31–48):** Live integration test suite binds `AsyncEngine` directly to `settings.async_database_url` (`POSTGRES_USER`).
+   - **[`backend/alembic/env.py`](../../backend/alembic/env.py#L33-L38) (lines 33–38):** Migration runner binds to `settings.async_database_url` (`POSTGRES_USER`).
    - **Forensic Assessment (STATUS: CURRENTLY UNIMPLEMENTED IN CODEBASE):** Zero role separation exists in the current codebase. `backend/alembic/env.py` (lines 33–38) sets `sqlalchemy.url` using `settings.async_database_url`, which resolves to `POSTGRES_USER` (`postgres` in `.env` / `support_admin` in `docker-compose.yml`). The runtime application, test harnesses, setup scripts, and Alembic migrations all share this single superuser/owner database account. Role separation between `app_user` (strictly least-privilege DML, non-owner) and `migration_admin` (table owner, schema DDL) is **NOT active in the codebase or PostgreSQL instance**. It is a mandatory proposed deployment task that cannot be claimed as active until dual authorization is granted, configuration files are updated, and role verification tests pass.
 
 ---
@@ -1384,7 +1384,7 @@ Prior to executing migration `002_chat_idempotency_and_outbox.py` and implementi
 ## 10. Comprehensive Test Matrix (123 Enumerated Mandatory Integration Test Areas)
 
 All Phase 4 integration tests will be authored in a new test file:  
-[`backend/tests/test_task6_phase4.py`](backend/tests/test_task6_phase4.py).  
+[`backend/tests/test_task6_phase4.py`](../../backend/tests/test_task6_phase4.py).  
 All database concurrency, locking, heartbeat, CAS, outbox worker, and Redis timeline tests **run against real PostgreSQL and live Redis** via `test_postgres_integration` infrastructure.
 
 The matrix contains **exactly 141 enumerated test areas**:

@@ -15,7 +15,7 @@ Phase 1 of Task 1 (Knowledge Base Ingestion, Sanitization & Change Detection) ha
 
 This phase delivers the core intake gate for the knowledge base pipeline, establishing automated cryptographic change detection, multi-tier document validation, deterministic prompt injection defense with default-deny fail-safe semantics, exact content and cross-document deduplication, automated PII scrubbing for vectorization derivatives, and an auditable quarantine subsystem.
 
-All implementations strictly adhere to the approved [DAY_04_TASK_1_ARCHITECTURE_PLAN.md](DAY_04_TASK_1_ARCHITECTURE_PLAN.md) Version 3.0.0. **Zero database migrations were required**, reusing existing columns and status enums via an existing-field tombstone protocol.
+All implementations strictly adhere to the approved [TASK_1_ARCHITECTURE_PLAN.md](TASK_1_ARCHITECTURE_PLAN.md) Version 3.0.0. **Zero database migrations were required**, reusing existing columns and status enums via an existing-field tombstone protocol.
 
 ---
 
@@ -45,7 +45,7 @@ flowchart TD
 ```
 
 ### 2.1 File Sanitization & Ingestion Validation (`sanitizer.py`)
-Located in [`backend/app/modules/knowledge/sanitizer.py`](backend/app/modules/knowledge/sanitizer.py):
+Located in [`backend/app/modules/knowledge/sanitizer.py`](../../backend/app/modules/knowledge/sanitizer.py):
 - **Physical Size Validation:** Enforces `MAX_FILE_SIZE_BYTES` (default 10 MB). Oversized files immediately raise `DocumentOversizedError` and are quarantined with error code `FILE_TOO_LARGE`.
 - **Extension & MIME Validation:** Restricts files to configured whitelist (`.md`, `.txt`, `.pdf`). Disallowed extensions raise `DocumentCorruptError` with code `DISALLOWED_EXTENSION`.
 - **Magic Byte & File Signature Sniffing:**
@@ -60,12 +60,12 @@ Located in [`backend/app/modules/knowledge/sanitizer.py`](backend/app/modules/kn
 - **Default-Deny Security Boundary:** If the LLM classifier is unreachable or times out, the sanitizer **quarantines the document** under `INJECTION_SCAN_UNAVAILABLE` rather than silently admitting potentially malicious inputs.
 
 ### 2.3 PII Masking of Vectorization Derivatives
-- Integrates with [`PIIMasker`](backend/app/services/pii_masker.py).
+- Integrates with [`PIIMasker`](../../backend/app/services/pii_masker.py).
 - **Separation of Derivatives:** Raw document text is strictly preserved in `SanitizationResult.original_text`, while `SanitizationResult.sanitized_text` contains fully redacted credit card numbers (Luhn validated), CVVs, SSNs, phone numbers, and email addresses.
 - Downstream embedding and vector generation (Phase 2) will consume `sanitized_text` exclusively, guaranteeing zero PII enters the FAISS index or query similarity space.
 
 ### 2.4 Cryptographic Change Detection (`change_detector.py`)
-Located in [`backend/app/modules/knowledge/change_detector.py`](backend/app/modules/knowledge/change_detector.py):
+Located in [`backend/app/modules/knowledge/change_detector.py`](../../backend/app/modules/knowledge/change_detector.py):
 - **Content Hashing:** Computes cryptographic SHA-256 hashes using streaming chunked reading (64 KB buffers), maintaining constant $O(1)$ memory overhead.
 - **Categorization Engine:**
   - `NEW`: First-time document code. Creates `Document` and `DocumentVersion(version_number=1, status='STAGED')`.
@@ -104,17 +104,17 @@ This ensures zero changes to the Day 02 PostgreSQL schema and eliminates the nee
 
 | File Path | Description |
 | :--- | :--- |
-| [`backend/app/modules/knowledge/__init__.py`](backend/app/modules/knowledge/__init__.py) | Module initialization and clean public symbol exports. |
-| [`backend/app/modules/knowledge/sanitizer.py`](backend/app/modules/knowledge/sanitizer.py) | Ingestion sanitizer, magic byte sniffer, heuristic & LLM prompt injection defense, PII scrubbing derivative generator, and quarantine manager. |
-| [`backend/app/modules/knowledge/change_detector.py`](backend/app/modules/knowledge/change_detector.py) | Cryptographic SHA-256 change detector, duplicate detector, concurrency guard, and existing-field tombstone executor. |
-| [`backend/tests/test_task1_phase1.py`](backend/tests/test_task1_phase1.py) | Comprehensive 13-test automated test suite covering all Phase 1 ingestion, sanitization, and change detection capabilities. |
+| [`backend/app/modules/knowledge/__init__.py`](../../backend/app/modules/knowledge/__init__.py) | Module initialization and clean public symbol exports. |
+| [`backend/app/modules/knowledge/sanitizer.py`](../../backend/app/modules/knowledge/sanitizer.py) | Ingestion sanitizer, magic byte sniffer, heuristic & LLM prompt injection defense, PII scrubbing derivative generator, and quarantine manager. |
+| [`backend/app/modules/knowledge/change_detector.py`](../../backend/app/modules/knowledge/change_detector.py) | Cryptographic SHA-256 change detector, duplicate detector, concurrency guard, and existing-field tombstone executor. |
+| [`backend/tests/test_task1_phase1.py`](../../backend/tests/test_task1_phase1.py) | Comprehensive 13-test automated test suite covering all Phase 1 ingestion, sanitization, and change detection capabilities. |
 
 ### 3.2 Modified Files
 
 | File Path | Changes Applied |
 | :--- | :--- |
-| [`backend/app/core/config.py`](backend/app/core/config.py) | Added knowledge base pipeline configuration: `KNOWLEDGE_DOCS_DIR`, `QUARANTINE_DIR`, `FAISS_STORAGE_DIR`, `MAX_FILE_SIZE_BYTES` (10 MB), and `ALLOWED_DOCUMENT_EXTENSIONS` (`[".md", ".txt", ".pdf"]`). |
-| [`backend/app/core/exceptions.py`](backend/app/core/exceptions.py) | Added standardized knowledge exceptions: `KnowledgeError`, `DocumentCorruptError`, `DocumentOversizedError`, `DocumentSecurityError`, and `DocumentQuarantinedError`. |
+| [`backend/app/core/config.py`](../../backend/app/core/config.py) | Added knowledge base pipeline configuration: `KNOWLEDGE_DOCS_DIR`, `QUARANTINE_DIR`, `FAISS_STORAGE_DIR`, `MAX_FILE_SIZE_BYTES` (10 MB), and `ALLOWED_DOCUMENT_EXTENSIONS` (`[".md", ".txt", ".pdf"]`). |
+| [`backend/app/core/exceptions.py`](../../backend/app/core/exceptions.py) | Added standardized knowledge exceptions: `KnowledgeError`, `DocumentCorruptError`, `DocumentOversizedError`, `DocumentSecurityError`, and `DocumentQuarantinedError`. |
 
 ---
 

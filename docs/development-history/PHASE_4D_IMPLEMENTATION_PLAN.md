@@ -27,7 +27,7 @@ Following architectural review of Revision 1, six critical findings were identif
 ## 2. Canonical API Endpoint & Route Specification
 
 ### 2.1 Specification Compliance & Justification
-In [`docs/architecture/API_SPECIFICATION.md`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/docs/architecture/API_SPECIFICATION.md) (Section 2.2 and Section 3) and [`docs/architecture/SECURITY_ARCHITECTURE.md`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/docs/architecture/SECURITY_ARCHITECTURE.md) (Section 3.2), the authoritative entry point for customer and agent conversational policy inquiries is:
+In [`docs/architecture/API_SPECIFICATION.md`](../architecture/API_SPECIFICATION.md) (Section 2.2 and Section 3) and [`docs/architecture/SECURITY_ARCHITECTURE.md`](../architecture/SECURITY_ARCHITECTURE.md) (Section 3.2), the authoritative entry point for customer and agent conversational policy inquiries is:
 
 $$\mathbf{POST\ /api/v1/chat/message}$$
 
@@ -52,7 +52,7 @@ $$\mathbf{POST\ /api/v1/chat/message}$$
 
 ## 3. Actual Orchestrator Interface & Parameter Binding
 
-An inspection of [`backend/app/modules/rag/orchestrator.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/orchestrator.py) confirms the exact class, method, contracts, and temporal data flow:
+An inspection of [`backend/app/modules/rag/orchestrator.py`](../../backend/app/modules/rag/orchestrator.py) confirms the exact class, method, contracts, and temporal data flow:
 
 ### 3.1 Class & Method Signature
 ```python
@@ -80,7 +80,7 @@ RAGKnowledgeAssistant = RAGOrchestrator
 ```
 
 ### 3.2 Required Internal Request Object (`RAGInternalRequest`)
-Located in [`backend/app/modules/rag/orchestrator.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/orchestrator.py#L54-L88):
+Located in [`backend/app/modules/rag/orchestrator.py`](../../backend/app/modules/rag/orchestrator.py#L54-L88):
 ```python
 class RAGInternalRequest(BaseModel):
     model_config = {"extra": "forbid"}
@@ -97,7 +97,7 @@ class RAGInternalRequest(BaseModel):
 ```
 
 ### 3.3 Return Type & Refusal Representation (`RAGResolutionResult`)
-Located in [`backend/app/modules/rag/generator.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/generator.py#L49-L66):
+Located in [`backend/app/modules/rag/generator.py`](../../backend/app/modules/rag/generator.py#L49-L66):
 ```python
 class RAGResolutionResult(BaseModel):
     is_resolved: bool
@@ -124,7 +124,7 @@ class RAGResolutionResult(BaseModel):
   - `citations = []`.
 
 ### 3.4 Temporal Policy Routing (`effective_as_of_date`)
-In [`backend/app/modules/rag/orchestrator.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/rag/orchestrator.py#L300-L307), `effective_as_of_date` flows directly to the retriever:
+In [`backend/app/modules/rag/orchestrator.py`](../../backend/app/modules/rag/orchestrator.py#L300-L307), `effective_as_of_date` flows directly to the retriever:
 ```python
 retrieval_result = await self.retriever.retrieve(
     query=san_result.clean_query,
@@ -145,7 +145,7 @@ In `SecurityAwareRetriever`, `effective_as_of_date` executes PostgreSQL indexed 
 ## 4. Authentication Architecture & Dependencies
 
 ### 4.1 Dependency Audit in Virtual Environment
-Inspection of the project environment (`.venv`) and [`backend/pyproject.toml`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/pyproject.toml):
+Inspection of the project environment (`.venv`) and [`backend/pyproject.toml`](../../backend/pyproject.toml):
 - **FastAPI / Uvicorn:** Specified in `pyproject.toml` (`fastapi>=0.115.0`, `uvicorn[standard]>=0.30.0`). Not currently installed in `.venv`.
 - **JWT Libraries:** `python-jose[cryptography]>=3.3.0` is specified in `pyproject.toml` line 49. Neither `jose` nor `jwt` is currently installed in `.venv`.
 - **Installed Packages:** `cryptography 50.0.2`, `bcrypt 5.0.0`, `pwdlib 0.3.1`, `asyncpg 0.32.0`, `sqlalchemy 2.1.6`, `pydantic 2.14.2`, `httpx 0.28.1` are present.
@@ -202,11 +202,11 @@ flowchart TD
 ## 5. Anonymous Access Policy: Strict Prohibition
 
 ### 5.1 Authoritative Specification Check
-- [`docs/architecture/API_SPECIFICATION.md`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/docs/architecture/API_SPECIFICATION.md) Section 2.2:
+- [`docs/architecture/API_SPECIFICATION.md`](../architecture/API_SPECIFICATION.md) Section 2.2:
   `Endpoint: /api/v1/chat/message | Method: POST | Auth Type: Session / JWT | Minimum Role: CUSTOMER, AGENT | Rejection: 401 (missing), 403 (unauthorized)`
-- [`docs/architecture/SECURITY_ARCHITECTURE.md`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/docs/architecture/SECURITY_ARCHITECTURE.md) Section 3.2:
+- [`docs/architecture/SECURITY_ARCHITECTURE.md`](../architecture/SECURITY_ARCHITECTURE.md) Section 3.2:
   Explicitly matches: `401 (missing), 403 (unauthorized)`.
-- [`docs/architecture/SYSTEM_ARCHITECTURE.md`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/docs/architecture/SYSTEM_ARCHITECTURE.md) Section 9:
+- [`docs/architecture/SYSTEM_ARCHITECTURE.md`](../architecture/SYSTEM_ARCHITECTURE.md) Section 9:
   `GATEWAY --> AUTH_CHECK{"Valid Customer Session or Staff JWT?"} -- No --> REJECT_401["Return 401 Unauthorized / 403 Forbidden"]`.
 
 ### 5.2 Architectural Decision
@@ -446,12 +446,12 @@ class ChatMessageResponse(BaseModel):
 
 | File | Action | Detailed Description |
 | :--- | :--- | :--- |
-| [`backend/app/api/__init__.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/api/__init__.py) | **Create** | API package root exporting router definitions. |
-| [`backend/app/api/deps.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/api/deps.py) | **Create** | Dependencies: `get_db()`, `get_correlation_id()`, `get_auth_context()`, `get_rag_orchestrator()`. |
-| [`backend/app/api/v1/__init__.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/api/v1/__init__.py) | **Create** | Aggregates all v1 routers (`chat_router`). |
-| [`backend/app/api/v1/chat.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/api/v1/chat.py) | **Create** | Implements canonical route `POST /api/v1/chat/message`. Connects HTTP request to `RAGOrchestrator`. |
-| [`backend/app/main.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/main.py) | **Create** | Minimal root FastAPI bootstrap with reader sync lifespan, RFC 7807 handlers, CORS, correlation middleware. |
-| [`backend/tests/test_task4_phase4d.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/tests/test_task4_phase4d.py) | **Create** | Comprehensive dedicated test suite for Phase 4D API layer. |
+| [`backend/app/api/__init__.py`](../../backend/app/api/__init__.py) | **Create** | API package root exporting router definitions. |
+| [`backend/app/api/deps.py`](../../backend/app/api/deps.py) | **Create** | Dependencies: `get_db()`, `get_correlation_id()`, `get_auth_context()`, `get_rag_orchestrator()`. |
+| [`backend/app/api/v1/__init__.py`](../../backend/app/api/v1/__init__.py) | **Create** | Aggregates all v1 routers (`chat_router`). |
+| [`backend/app/api/v1/chat.py`](../../backend/app/api/v1/chat.py) | **Create** | Implements canonical route `POST /api/v1/chat/message`. Connects HTTP request to `RAGOrchestrator`. |
+| [`backend/app/main.py`](../../backend/app/main.py) | **Create** | Minimal root FastAPI bootstrap with reader sync lifespan, RFC 7807 handlers, CORS, correlation middleware. |
+| [`backend/tests/test_task4_phase4d.py`](../../backend/tests/test_task4_phase4d.py) | **Create** | Comprehensive dedicated test suite for Phase 4D API layer. |
 | **All Existing Phase 4A–4C Files** | **Preserve** | **Zero modifications to existing engine code or database models.** |
 
 ---

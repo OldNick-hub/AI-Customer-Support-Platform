@@ -26,7 +26,7 @@
 ## 2. Code-Level Fixes Applied
 
 ### 2.1. Trust Boundary Enforcement & Concurrency Guard in `lifecycle_manager.py`
-**File:** [`backend/app/modules/multilingual/lifecycle_manager.py`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/backend/app/modules/multilingual/lifecycle_manager.py)
+**File:** [`backend/app/modules/multilingual/lifecycle_manager.py`](../../backend/app/modules/multilingual/lifecycle_manager.py)
 
 #### A. Per-Session Async Lock Guard
 ```python

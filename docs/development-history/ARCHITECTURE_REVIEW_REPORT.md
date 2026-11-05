@@ -5,7 +5,7 @@
 **Role:** Senior AI/ML & Backend Architect  
 **Document Version:** 3.0.0 (Final Architecture Sign-Off)  
 **Date:** November 01, 2026  
-**Primary Deliverable:** [`DAY_04_TASK_1_ARCHITECTURE_PLAN.md`](file:///c:/Users/bhavs/OneDrive/Desktop/AI-Customer-Support-Platform/DAY_04_TASK_1_ARCHITECTURE_PLAN.md) (Version 3.0.0)
+**Primary Deliverable:** [`TASK_1_ARCHITECTURE_PLAN.md`](TASK_1_ARCHITECTURE_PLAN.md) (Version 3.0.0)
 
 ---
 
