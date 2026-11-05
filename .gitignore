@@ -1,0 +1,97 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+.env.local
+
+# Secrets & Environment Variables (NEVER COMMIT REAL SECRETS)
+.env
+.env.*
+!.env.example
+*.bak*
+*.pem
+*.key
+*.cert
+*.crt
+secrets.json
+
+# Testing & Coverage
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+htmlcov/
+
+# Node & Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-debug.log*
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# Vector Indexes & Storage Volumes (Local Ephemeral Artifacts)
+storage/
+storage/backups/
+storage/indices/*
+!storage/indices/.gitkeep
+storage/raw_documents/*
+!storage/raw_documents/.gitkeep
+storage/evidence_uploads/*
+!storage/evidence_uploads/.gitkeep
+storage/quarantine/*
+!storage/quarantine/.gitkeep
+*.faiss
+*.pkl
+*.dump
+
+# Logs & Databases
+*.log
+logs/
+*.sqlite
+*.sqlite3
+*.sql
+
+# IDE & Editor Specific
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db

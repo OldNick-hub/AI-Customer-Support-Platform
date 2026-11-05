@@ -1,0 +1,264 @@
+{
+  "suite_version": "v1.2.0",
+  "minimum_queries_required": 25,
+  "description": "Enterprise Golden Q&A Benchmark Suite for candidate vector index evaluation and quality gate verification.",
+  "categories": [
+    "RETURNS_AND_REFUNDS",
+    "SHIPPING_AND_DELIVERY",
+    "WARRANTY_AND_REPAIRS",
+    "HAZMAT_AND_COMPLIANCE"
+  ],
+  "test_cases": [
+    {
+      "query_id": "QA-RET-001",
+      "category": "RETURNS_AND_REFUNDS",
+      "question": "Can I return an opened electronic item after 20 days?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-RETURN-US-2026"],
+      "ground_truth_answer": "No. Standard electronics must be returned unopened within 14 days of delivery. Opened electronic items are strictly ineligible for return after 14 days unless verified defective under manufacturer warranty.",
+      "is_critical": true,
+      "liability_tier": "HIGH"
+    },
+    {
+      "query_id": "QA-RET-002",
+      "category": "RETURNS_AND_REFUNDS",
+      "question": "What is the restocking fee for customer remorse returns on large furniture items?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-RETURN-US-2026"],
+      "ground_truth_answer": "A standard 15% restocking fee applies to all customer remorse returns of bulky or oversized furniture, deducted from the total refund amount.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-RET-003",
+      "category": "RETURNS_AND_REFUNDS",
+      "question": "How long does it take for a refund to post back to my original payment method after the warehouse receives my return?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-RETURN-US-2026"],
+      "ground_truth_answer": "Once the return package is received and inspected at our fulfillment center, refunds are processed within 3 to 5 business days, with bank posting taking an additional 2 to 3 business days.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-RET-004",
+      "category": "RETURNS_AND_REFUNDS",
+      "question": "Can merchandise purchased as Final Sale or Clearance be returned for store credit?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-RETURN-US-2026"],
+      "ground_truth_answer": "No. Items designated as Final Sale, Clearance, or Warehouse Liquidation cannot be returned, exchanged, or converted into store credit under any circumstances.",
+      "is_critical": true,
+      "liability_tier": "HIGH"
+    },
+    {
+      "query_id": "QA-RET-005",
+      "category": "RETURNS_AND_REFUNDS",
+      "question": "How do gift returns work when the recipient does not have the original purchase receipt?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-RETURN-US-2026"],
+      "ground_truth_answer": "Gift recipients without an original receipt can return eligible items within 30 days for store credit, provided the order number or gift barcode is verified.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-RET-006",
+      "category": "RETURNS_AND_REFUNDS",
+      "question": "What is the reporting window if a received product is defective on arrival (DOA)?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-RETURN-US-2026"],
+      "ground_truth_answer": "Defective on arrival items must be reported within 48 hours of carrier delivery confirmation to qualify for an immediate zero-cost expedited replacement.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-RET-007",
+      "category": "RETURNS_AND_REFUNDS",
+      "question": "Who is responsible for return shipping costs on international orders?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-RETURN-US-2026"],
+      "ground_truth_answer": "For international orders, customers are responsible for international return shipping postage, customs declarations, and any applicable import duties unless the return is due to warehouse error.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-SHP-001",
+      "category": "SHIPPING_AND_DELIVERY",
+      "question": "What is the daily cutoff time for Next-Day Express shipping orders?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-SHIPPING-GLOBAL-2026"],
+      "ground_truth_answer": "Next-Day Express orders must be placed and payment confirmed by 2:00 PM Eastern Standard Time (EST) Monday through Friday for same-day dispatch.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-SHP-002",
+      "category": "SHIPPING_AND_DELIVERY",
+      "question": "Is an adult signature required upon delivery for orders exceeding $500 in value?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-SHIPPING-GLOBAL-2026"],
+      "ground_truth_answer": "Yes. All shipments with a declared value exceeding $500 USD mandate direct adult signature upon delivery; carriers are prohibited from leaving packages unattended.",
+      "is_critical": true,
+      "liability_tier": "HIGH"
+    },
+    {
+      "query_id": "QA-SHP-003",
+      "category": "SHIPPING_AND_DELIVERY",
+      "question": "Can oversized freight and appliances be shipped to standard PO Boxes?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-SHIPPING-GLOBAL-2026"],
+      "ground_truth_answer": "No. Oversized freight items, major appliances, and shipments over 70 pounds cannot be delivered to PO Boxes or APO/FPO addresses and require a valid physical street address.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-SHP-004",
+      "category": "SHIPPING_AND_DELIVERY",
+      "question": "Will I receive separate tracking numbers if an order is fulfilled from multiple fulfillment warehouses?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-SHIPPING-GLOBAL-2026"],
+      "ground_truth_answer": "Yes. When an order is split across multiple fulfillment centers, independent carrier tracking numbers are generated and emailed for each dispatch package.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-SHP-005",
+      "category": "SHIPPING_AND_DELIVERY",
+      "question": "What is the carrier protocol if a customer package is deemed undeliverable due to an incorrect address?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-SHIPPING-GLOBAL-2026"],
+      "ground_truth_answer": "Packages returned to sender due to incorrect addresses are received by the returns processing center, inspected, and refunded minus original carrier freight costs.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-SHP-006",
+      "category": "SHIPPING_AND_DELIVERY",
+      "question": "Are delivery timelines and shipping surcharges different for shipments to Alaska and Hawaii?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-SHIPPING-GLOBAL-2026"],
+      "ground_truth_answer": "Shipments to Alaska and Hawaii incur non-contiguous domestic freight surcharges and require an additional 3 to 7 business days transit time depending on destination geography.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-WAR-001",
+      "category": "WARRANTY_AND_REPAIRS",
+      "question": "What is the default manufacturer limited warranty duration for consumer hardware devices?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-WARRANTY-REPAIR-2026"],
+      "ground_truth_answer": "All new hardware devices include a 12-month manufacturer limited warranty covering defects in materials, assembly, and workmanship under normal operational use.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-WAR-002",
+      "category": "WARRANTY_AND_REPAIRS",
+      "question": "Does the limited warranty cover liquid immersion, water damage, or cracked screens caused by accidental drops?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-WARRANTY-REPAIR-2026"],
+      "ground_truth_answer": "No. The limited warranty explicitly excludes cosmetic damage, liquid spills or immersion, cracked display panels, and physical impact resulting from accidental drops.",
+      "is_critical": true,
+      "liability_tier": "HIGH"
+    },
+    {
+      "query_id": "QA-WAR-003",
+      "category": "WARRANTY_AND_REPAIRS",
+      "question": "What documentation is required to transfer remaining warranty coverage to a secondary purchaser?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-WARRANTY-REPAIR-2026"],
+      "ground_truth_answer": "To transfer warranty coverage, the claimant must provide the original authorized dealer sales receipt, serial number registration, and proof of secondary purchase transfer.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-WAR-004",
+      "category": "WARRANTY_AND_REPAIRS",
+      "question": "Does opening the device chassis or installing unauthorized third-party firmware void the warranty?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-WARRANTY-REPAIR-2026"],
+      "ground_truth_answer": "Yes. Unauthorized disassembly, tampering with tamper-evident seals, hardware modifications, or flashing custom firmware voids all warranty coverage immediately.",
+      "is_critical": true,
+      "liability_tier": "CRITICAL"
+    },
+    {
+      "query_id": "QA-WAR-005",
+      "category": "WARRANTY_AND_REPAIRS",
+      "question": "How are out-of-warranty hardware repairs priced and evaluated?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-WARRANTY-REPAIR-2026"],
+      "ground_truth_answer": "Out-of-warranty hardware repairs require a $49 non-refundable initial diagnostic evaluation fee, which is credited toward the approved repair estimate if service proceeds.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-WAR-006",
+      "category": "WARRANTY_AND_REPAIRS",
+      "question": "Are replacement units supplied under warranty service guaranteed to be brand new or factory refurbished?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-WARRANTY-REPAIR-2026"],
+      "ground_truth_answer": "Warranty replacement units may be new or factory-certified refurbished devices that meet original performance and cosmetic standards, carrying the balance of the original warranty.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-HAZ-001",
+      "category": "HAZMAT_AND_COMPLIANCE",
+      "question": "Can loose or standalone lithium-ion batteries be shipped via commercial air freight?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-HAZMAT-GLOBAL-2026"],
+      "ground_truth_answer": "No. Standalone, loose, or unpackaged lithium-ion batteries are strictly prohibited on passenger and commercial air cargo flights pursuant to FAA, DOT, and IATA hazardous materials regulations.",
+      "is_critical": true,
+      "liability_tier": "CRITICAL"
+    },
+    {
+      "query_id": "QA-HAZ-002",
+      "category": "HAZMAT_AND_COMPLIANCE",
+      "question": "What shipping restrictions apply to aerosol sprays, pressurized cans, and flammable adhesives?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-HAZMAT-GLOBAL-2026"],
+      "ground_truth_answer": "Pressurized aerosols and flammable adhesives are classified as UN1950 Limited Quantity commodities and can only be transported via ground freight with proper diamond hazard labeling.",
+      "is_critical": true,
+      "liability_tier": "HIGH"
+    },
+    {
+      "query_id": "QA-HAZ-003",
+      "category": "HAZMAT_AND_COMPLIANCE",
+      "question": "Can swollen, damaged, or recalled lithium batteries be sent through standard return mail?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-HAZMAT-GLOBAL-2026"],
+      "ground_truth_answer": "Swollen, punctured, or recalled batteries are strictly banned from all postal and commercial parcel return services due to thermal runaway and fire risk; they must be disposed of at certified local hazardous waste facilities.",
+      "is_critical": true,
+      "liability_tier": "CRITICAL"
+    },
+    {
+      "query_id": "QA-HAZ-004",
+      "category": "HAZMAT_AND_COMPLIANCE",
+      "question": "Where can customers access official Safety Data Sheets (SDS) for chemical cleaning kits?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-HAZMAT-GLOBAL-2026"],
+      "ground_truth_answer": "Official OSHA-compliant Safety Data Sheets (SDS) for all chemical kits and industrial solvents can be downloaded from our compliance repository or requested via regulatory support.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-HAZ-005",
+      "category": "HAZMAT_AND_COMPLIANCE",
+      "question": "What packaging and ventilation standards are mandated when shipping dry ice with biological specimens?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-HAZMAT-GLOBAL-2026"],
+      "ground_truth_answer": "Dry ice packages must use vented outer insulated containers to prevent pressure buildup, feature UN1845 Class 9 diamond hazard labels, and declare exact net weight in kilograms.",
+      "is_critical": false,
+      "liability_tier": "STANDARD"
+    },
+    {
+      "query_id": "QA-HAZ-006",
+      "category": "HAZMAT_AND_COMPLIANCE",
+      "question": "Can medical diagnostic kits containing biological reagents be exported internationally without regulatory permits?",
+      "expected_chunk_ids": [],
+      "required_citations": ["POL-HAZMAT-GLOBAL-2026"],
+      "ground_truth_answer": "No. Diagnostic kits containing active reagents or biohazardous media require valid export clearance, destination customs import licenses, and declaration under ITAR/EAR regulations.",
+      "is_critical": true,
+      "liability_tier": "CRITICAL"
+    }
+  ]
+}
+

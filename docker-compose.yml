@@ -1,0 +1,145 @@
+version: '3.8'
+
+services:
+  # --- AUTHORITATIVE PERSISTENCE TIER ---
+  postgres:
+    image: postgres:16-alpine
+    container_name: acsp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-support_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-support_password_placeholder}
+      POSTGRES_DB: ${POSTGRES_DB:-customer_support_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-support_admin} -d ${POSTGRES_DB:-customer_support_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - acsp-network
+
+  # --- IN-MEMORY CACHE & MESSAGE BROKER ---
+  redis:
+    image: redis:7-alpine
+    container_name: acsp-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - acsp-network
+
+  # --- FASTAPI BACKEND API GATEWAY ---
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: acsp-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env.example
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./storage:/app/storage
+    networks:
+      - acsp-network
+
+  # --- ASYNCHRONOUS CELERY WORKER ---
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: acsp-celery-worker
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app.celery worker --loglevel=info -Q indexing,multimodal,sla
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env.example
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    volumes:
+      - ./backend:/app
+      - ./storage:/app/storage
+    networks:
+      - acsp-network
+
+  # --- CELERY BEAT SCHEDULER (SLA WATCHDOG & TTL CLEANUP) ---
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: acsp-celery-beat
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app.celery beat --loglevel=info
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env.example
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    networks:
+      - acsp-network
+
+  # --- FRONTEND (REACT 18 + VITE) ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: acsp-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - acsp-network
+
+  # --- LOCAL INFERENCE FALLBACK (OPTIONAL PROFILE) ---
+  ollama:
+    image: ollama/ollama:latest
+    container_name: acsp-ollama
+    restart: unless-stopped
+    profiles:
+      - ollama-local
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - acsp-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama_models:
+
+networks:
+  acsp-network:
+    driver: bridge
