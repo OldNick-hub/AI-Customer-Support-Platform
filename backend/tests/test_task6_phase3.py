@@ -69,11 +69,7 @@ from app.modules.multilingual.lifecycle_manager import (
 from app.services.llm_gateway import LLMGateway, LLMResponse
 from app.services.pii_masker import PIIMasker
 from app.services.redis_service import RedisService
-
-try:
-    from conftest import TestSessionLocal
-except ImportError:
-    from tests.conftest import TestSessionLocal
+from tests.helpers.database import TestSessionLocal
 
 
 # ==============================================================================

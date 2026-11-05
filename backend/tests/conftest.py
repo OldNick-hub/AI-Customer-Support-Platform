@@ -8,23 +8,14 @@ import asyncio
 from typing import AsyncGenerator
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.encryption import ApplicationLayerEncryption
 from app.db.base import Base
 import app.models  # Ensures all models are registered in Base.metadata
+from tests.helpers.database import TEST_DB_URL, test_engine, TestSessionLocal
 
-# Test database URL - strictly isolated in-memory database
-TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
-
-test_engine = create_async_engine(TEST_DB_URL, echo=False)
-TestSessionLocal = async_sessionmaker(
-    bind=test_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
-)
+__all__ = ["TEST_DB_URL", "test_engine", "TestSessionLocal"]
 
 
 @pytest.fixture(scope="session")
