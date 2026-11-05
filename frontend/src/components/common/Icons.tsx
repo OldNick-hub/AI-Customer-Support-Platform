@@ -309,3 +309,47 @@ export const SendIcon: React.FC<IconProps> = ({ size = 18, className = '', ...pr
   </svg>
 );
 
+export const SparklesIcon: React.FC<IconProps> = ({ size = 18, className = '', ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z" />
+    <path d="M5 3v4" />
+    <path d="M3 5h4" />
+    <path d="M19 17v4" />
+    <path d="M17 19h4" />
+  </svg>
+);
+
+export const BotIcon: React.FC<IconProps> = ({ size = 18, className = '', ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <rect width="18" height="12" x="3" y="6" rx="2" />
+    <path d="M9 12h.01" />
+    <path d="M15 12h.01" />
+    <path d="M12 2v4" />
+    <path d="m2 10 1-1" />
+    <path d="m22 10-1-1" />
+  </svg>
+);
+
+

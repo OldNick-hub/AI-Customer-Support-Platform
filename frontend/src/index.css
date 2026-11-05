@@ -72,6 +72,10 @@
   /* Scrollbar */
   --scrollbar-thumb: rgba(255, 255, 255, 0.15);
   --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+
+  /* Animated Glassmorphism CTA Tokens */
+  --cta-shimmer: rgba(147, 197, 253, 0.75);
+  --cta-glow: rgba(59, 130, 246, 0.35);
 }
 
 /* ==============================================================================
@@ -146,6 +150,10 @@
   /* Scrollbar */
   --scrollbar-thumb: rgba(148, 163, 184, 0.40);
   --scrollbar-thumb-hover: rgba(100, 116, 139, 0.60);
+
+  /* Animated Glassmorphism CTA Tokens */
+  --cta-shimmer: rgba(59, 130, 246, 0.65);
+  --cta-glow: rgba(59, 130, 246, 0.20);
 }
 
 /* ==============================================================================
@@ -264,6 +272,68 @@ body {
     gap: 12px;
     padding-top: 10px !important;
     padding-bottom: 10px !important;
+  }
+}
+
+/* ==============================================================================
+   Animated Glassmorphism CTA Component
+   ============================================================================== */
+@keyframes glassCtaRotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes borderBeamRotation {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+.glass-cta-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  padding: 1.5px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: none;
+  isolation: isolate;
+  box-shadow: 0 4px 20px -2px var(--cta-glow);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.glass-cta-btn:hover {
+  transform: scale(1.03);
+  box-shadow: 0 0 28px 4px var(--cta-glow), 0 8px 24px -4px rgba(0, 0, 0, 0.25);
+}
+
+.glass-cta-btn:active {
+  transform: scale(0.98);
+}
+
+.glass-cta-btn:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-cta-shimmer-spin,
+  .glass-cta-beam {
+    animation: none !important;
+  }
+  .glass-cta-btn:hover {
+    transform: none !important;
   }
 }
 

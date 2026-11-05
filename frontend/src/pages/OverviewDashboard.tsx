@@ -2,6 +2,7 @@ import React from 'react';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
+import { GlassmorphismCta } from '../components/common/GlassmorphismCta';
 import {
   TicketIcon,
   AlertTriangleIcon,
@@ -64,9 +65,9 @@ export const OverviewDashboard: React.FC = () => {
             Real-time telemetry, conversational RAG chat, SLA watchdogs & risk escalation. (Aggregated ticket metrics simulated pending Day 12).
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <Button variant="secondary" size="sm">Export Report</Button>
-          <Button variant="primary" size="sm">New Ticket</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <GlassmorphismCta label="Start AI Assistant" to="/conversations" size="md" />
+          <Button variant="secondary" size="sm">Export Telemetry</Button>
         </div>
       </div>
 

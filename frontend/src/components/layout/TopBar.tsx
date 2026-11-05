@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { SearchIcon, BellIcon, ShieldCheckIcon } from '../common/Icons';
+import { GlassmorphismCta } from '../common/GlassmorphismCta';
 
 export const TopBar: React.FC = () => {
   const [backendHealth, setBackendHealth] = useState<'healthy' | 'checking' | 'offline'>('checking');
@@ -100,6 +101,9 @@ export const TopBar: React.FC = () => {
 
       {/* Right Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        {/* Animated Command-Center AI Assistant CTA */}
+        <GlassmorphismCta label="Launch AI Copilot" to="/conversations" size="sm" />
+
         {/* Backend Status Indicator */}
         <div
           style={{
