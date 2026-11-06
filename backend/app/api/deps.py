@@ -204,7 +204,10 @@ async def get_auth_context(
         )
 
     now = datetime.now(timezone.utc)
-    if sess_record.expires_at <= now:
+    expires_at = sess_record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= now:
         logger.warning("Customer session has expired (%s).", sess_record.expires_at)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

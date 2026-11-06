@@ -1,0 +1,129 @@
+"""Pydantic Request & Response Schemas for Multimodal Evidence Intake & OCR.
+
+Provides strict, validated, typed schemas for:
+- File upload responses
+- Evidence metadata and status
+- Structured invoice and receipt entities
+- Page-level extraction details
+- Extraction warnings and confidence scores
+"""
+
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional
+import uuid
+from pydantic import BaseModel, Field, field_validator
+
+
+class ReceiptLineItem(BaseModel):
+    """Individual line item extracted from an invoice or receipt."""
+
+    product_name: str = Field(..., description="Product description or title")
+    quantity: Optional[float] = Field(default=1.0, description="Extracted quantity")
+    unit_price: Optional[float] = Field(default=None, description="Price per unit")
+    total_price: Optional[float] = Field(default=None, description="Line item total price")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Extraction confidence score (0.0-1.0)")
+
+
+class PageExtractionMetadata(BaseModel):
+    """Page-level extraction details for multi-page documents (PDFs)."""
+
+    page_number: int = Field(..., ge=1, description="1-indexed page number")
+    char_count: int = Field(default=0, ge=0, description="Character count extracted from page")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Page extraction confidence")
+    orientation_degrees: Optional[int] = Field(default=0, description="Detected rotation (0, 90, 180, 270)")
+    has_images: bool = Field(default=False, description="Whether page contains embedded images")
+
+
+class StructuredInvoiceData(BaseModel):
+    """Structured fields parsed from document images or PDFs."""
+
+    order_id: Optional[str] = Field(default=None, description="Extracted customer order identifier (e.g. ORD-12345)")
+    invoice_number: Optional[str] = Field(default=None, description="Vendor or merchant invoice reference number")
+    invoice_date: Optional[date] = Field(default=None, description="Normalized invoice issuance date")
+    transaction_date: Optional[date] = Field(default=None, description="Normalized payment transaction date")
+    total_amount: Optional[float] = Field(default=None, ge=0.0, description="Final gross total payable amount")
+    currency: Optional[str] = Field(default=None, description="3-letter ISO-4217 currency code (USD, EUR, GBP, INR)")
+    tax_amount: Optional[float] = Field(default=None, ge=0.0, description="Extracted sales tax, VAT, or GST amount")
+    product_name: Optional[str] = Field(default=None, description="Primary product or service description")
+    product_quantity: Optional[float] = Field(default=None, description="Primary product quantity")
+    product_price: Optional[float] = Field(default=None, description="Primary product price")
+    merchant_name: Optional[str] = Field(default=None, description="Seller, store, vendor, or merchant organization name")
+    line_items: List[ReceiptLineItem] = Field(default_factory=list, description="Itemized product purchase lines")
+
+    # Confidence and Validation Meta
+    overall_confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Aggregate extraction confidence")
+    field_confidence: Dict[str, float] = Field(default_factory=dict, description="Field-by-field confidence scores")
+    uncertain_fields: List[str] = Field(default_factory=list, description="Fields below confidence threshold (< 0.70)")
+    missing_fields: List[str] = Field(default_factory=list, description="Required or standard fields not found in document")
+    warnings: List[str] = Field(default_factory=list, description="Data ambiguity or validation warnings")
+
+    # Document Structure Meta
+    page_count: int = Field(default=1, ge=1, description="Total document pages processed")
+    pages: List[PageExtractionMetadata] = Field(default_factory=list, description="Per-page extraction breakdown")
+    is_scanned: bool = Field(default=False, description="True if document required OCR instead of embedded digital text")
+    provider_used: str = Field(default="mock", description="OCR or extraction engine that parsed the document")
+    pii_redacted_text: str = Field(default="", description="Full extracted text with customer PII sanitized")
+
+
+class EvidenceUploadResponse(BaseModel):
+    """Response returned upon successful evidence file upload."""
+
+    evidence_id: str = Field(..., description="Unique UUID of the stored evidence record")
+    conversation_id: str = Field(..., description="Associated conversation thread UUID")
+    customer_id: Optional[str] = Field(default=None, description="Owner customer profile UUID")
+    file_name: str = Field(..., description="Sanitized client filename")
+    mime_type: str = Field(..., description="Authoritative detected MIME type")
+    file_size_bytes: int = Field(..., description="Stored file size in bytes")
+    sha256_hash: str = Field(..., description="Cryptographic SHA-256 fingerprint of file payload")
+    status: str = Field(..., description="Processing status ('STAGED', 'ANALYZING', 'VERIFIED', 'FLAGGED_UNSAFE')")
+    is_malicious: bool = Field(default=False, description="True if document triggered visual prompt injection or malware rules")
+    quarantine_reason: Optional[str] = Field(default=None, description="Reason if document was flagged unsafe")
+    retention_expires_at: datetime = Field(..., description="30-day retention expiration timestamp (UTC)")
+    created_at: datetime = Field(..., description="Upload timestamp (UTC)")
+    structured_entities: Optional[StructuredInvoiceData] = Field(
+        default=None, description="Structured parsed entities if processed synchronously"
+    )
+
+
+class EvidenceDetailResponse(BaseModel):
+    """Detailed evidence record with processing status and audit timestamps."""
+
+    evidence_id: str
+    conversation_id: Optional[str] = None
+    customer_id: Optional[str] = None
+    message_id: Optional[str] = None
+    ticket_id: Optional[str] = None
+    file_name: str
+    mime_type: str
+    file_size_bytes: int
+    sha256_hash: str
+    status: str
+    is_malicious: bool
+    quarantine_reason: Optional[str] = None
+    processing_error: Optional[str] = None
+    retention_expires_at: datetime
+    created_at: datetime
+    processed_at: Optional[datetime] = None
+
+
+class EvidenceStatusResponse(BaseModel):
+    """Lightweight polling response for background evidence processing status."""
+
+    evidence_id: str
+    status: str
+    is_malicious: bool
+    quarantine_reason: Optional[str] = None
+    processing_error: Optional[str] = None
+    processed_at: Optional[datetime] = None
+
+
+class EvidenceExtractionResponse(BaseModel):
+    """Full structured extraction results for an evidence record."""
+
+    evidence_id: str
+    status: str
+    extracted_at: datetime
+    ocr_confidence: float
+    pii_redacted_text: str
+    entities: StructuredInvoiceData
+

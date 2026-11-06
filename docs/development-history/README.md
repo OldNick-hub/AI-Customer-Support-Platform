@@ -182,7 +182,15 @@ Zero Silent English translation, entity preservation, session lifecycle manageme
 
 ---
 
-## 8. Subsequent Development Phases
+## 8. Multimodal Evidence Intake & OCR
+
+* **[multimodal-evidence-intake-ocr-implementation-report.md](multimodal-evidence-intake-ocr-implementation-report.md)**  
+  *Original Milestone:* Day 09  
+  *Scope:* Multimodal evidence intake, binary magic bytes validation (JPEG, PNG, PDF), path traversal defense, AES-256-GCM encryption at rest bound to `evidence_id`, visual prompt injection defense (`FLAGGED_UNSAFE`), PII/PCI-DSS payment data masking, multi-page PDF processing (<= 10 pages), rule-based receipt & invoice entity extraction (Order ID, Invoice #, Dates, Totals, Taxes, Merchants, Line Items) with field-level confidence scoring, Alembic migration 004, and REST endpoints (`/upload`, `/{id}`, `/{id}/status`, `/{id}/extraction`). Verified with 23/23 Day 09 tests and 610/610 full regression tests.
+
+---
+
+## 9. Subsequent Development Phases
 
 Ongoing and planned technical specifications for upcoming platform capabilities:
 

@@ -40,6 +40,7 @@ dependencies = [
 
     # Multimodal, PDF & OCR
     "pillow>=10.4.0",
+    "pypdf>=6.0.0",
     "pymupdf>=1.24.9",
     "pytesseract>=0.3.10",
     "python-magic-bin>=0.4.14; sys_platform == 'win32'",

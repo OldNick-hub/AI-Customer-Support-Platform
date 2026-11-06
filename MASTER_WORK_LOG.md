@@ -549,6 +549,34 @@ Implemented Day 08 of the engineering roadmap: intelligent multi-turn escalation
 - **Deliverables:** Authored [`docs/development-history/intelligent-escalation-after-hours-implementation-report.md`](docs/development-history/intelligent-escalation-after-hours-implementation-report.md).
 - **Status:** **DAY 08 COMPLETED, HARDENED, AUDITED & VERIFIED**.
 
+---
+
+## Day 09 — Multimodal Evidence Intake & OCR
+
+### 1. Scope & Execution Overview
+Implemented Day 09 of the engineering roadmap: production-grade multimodal evidence intake pipeline supporting customer-submitted screenshots, photos (JPEG/PNG), digital PDF invoices, and scanned receipts. Enforces binary magic bytes validation, path traversal defense, authenticated AES-256-GCM encryption at rest, visual prompt injection quarantine, PII/PCI-DSS payment data redaction, multi-page PDF processing (<= 10 pages), rule-based financial entity extraction, Alembic migration 004, and REST endpoints under `/api/v1/evidence`.
+
+### 2. Core Implementation Deliverables
+- **Authoritative Binary Signature & Security Validator:** Authored [`backend/app/modules/evidence/validator.py`](backend/app/modules/evidence/validator.py) inspecting true magic bytes (JPEG `\xFF\xD8\xFF`, PNG `\x89PNG\r\n\x1a\n`, PDF `%PDF-`), rejecting 0-byte files, rejecting >15MB files, enforcing <= 10 PDF pages via `pypdf`, and blocking directory traversal and null byte injections.
+- **AES-256-GCM Encrypted Disk Storage:** Authored [`backend/app/modules/evidence/storage.py`](backend/app/modules/evidence/storage.py) providing customer directory boundary checking and authenticated AES-256-GCM encryption at rest bound to the unique `evidence_id` as authenticated associated data.
+- **Extensible OCR Provider Abstraction:** Authored [`backend/app/modules/evidence/providers/base.py`](backend/app/modules/evidence/providers/base.py) with:
+  - [`backend/app/modules/evidence/providers/pdf_extractor.py`](backend/app/modules/evidence/providers/pdf_extractor.py): Digital PDF text extraction, per-page metadata, rotation, and scanned document detection.
+  - [`backend/app/modules/evidence/providers/receipt_parser.py`](backend/app/modules/evidence/providers/receipt_parser.py): High-precision financial parser extracting Order ID, Invoice #, Dates, Gross Totals, Taxes, Merchants, and Itemized Line Items without fabricating missing fields.
+  - [`backend/app/modules/evidence/providers/mock_provider.py`](backend/app/modules/evidence/providers/mock_provider.py): Deterministic mock engine for zero-dependency reproducible unit, integration, and security testing.
+  - [`backend/app/modules/evidence/providers/gemini_provider.py`](backend/app/modules/evidence/providers/gemini_provider.py): Google Gemini Multimodal Vision provider with graceful fallback.
+- **Multimodal Extraction & Security Pipeline:** Authored [`backend/app/modules/evidence/pipeline.py`](backend/app/modules/evidence/pipeline.py) coordinating visual and textual prompt injection scanning (`FLAGGED_UNSAFE`), PII/credit-card masking via `PIIMaskingEngine`, and structured financial parsing.
+- **Evidence Service & Multi-Tenant Authorization:** Authored [`backend/app/modules/evidence/service.py`](backend/app/modules/evidence/service.py) coordinating validation, composite `(conversation_id, sha256_hash)` deduplication, multi-tenant RBAC, synchronous/asynchronous processing, and relational persistence.
+- **REST Endpoints:** Exposed `/upload`, `/{evidence_id}`, `/{evidence_id}/status`, and `/{evidence_id}/extraction` under `/api/v1/evidence` in [`backend/app/api/v1/evidence.py`](backend/app/api/v1/evidence.py), mounted in [`backend/app/api/v1/__init__.py`](backend/app/api/v1/__init__.py).
+- **Alembic Migration 004 (`004_evidence_intake_ocr`):** Authored and applied [`backend/alembic/versions/004_evidence_intake_ocr.py`](backend/alembic/versions/004_evidence_intake_ocr.py) adding `conversation_id`, `customer_id`, `processing_error`, `processed_at`, and composite index `ix_evidence_files_conv_hash` to `evidence_files`.
+
+### 3. Verification & Test Suite Summary
+- **Dedicated Day 09 Test Suite:** [`backend/tests/test_multimodal_evidence_intake.py`](backend/tests/test_multimodal_evidence_intake.py): **23 / 23 PASSED** in 7.60s.
+- **Day 08 Regression Suite:** [`backend/tests/test_intelligent_escalation_after_hours.py`](backend/tests/test_intelligent_escalation_after_hours.py): **26 / 26 PASSED** in 8.46s.
+- **Full Backend Regression Suite:** **610 / 610 PASSED** (zero regressions, zero broken contracts).
+- **Alembic Migrations:** Revisions `001`, `002`, `003`, `004` all verified on PostgreSQL.
+- **Deliverables:** Authored [`docs/development-history/multimodal-evidence-intake-ocr-implementation-report.md`](docs/development-history/multimodal-evidence-intake-ocr-implementation-report.md).
+- **Status:** **DAY 09 COMPLETED, HARDENED, AUDITED & VERIFIED**.
+
 
 
 

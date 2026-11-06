@@ -166,6 +166,17 @@ class Settings(BaseSettings):
     ON_CALL_WEBHOOK_URL: Optional[str] = None
     ON_CALL_API_KEY: Optional[str] = None
 
+    # --- Multimodal Evidence Intake & OCR (Day 09) ---
+    EVIDENCE_STORAGE_DIR: str = "./storage/evidence"
+    EVIDENCE_MAX_FILE_SIZE_BYTES: int = 15 * 1024 * 1024  # 15 MB
+    EVIDENCE_MAX_PDF_PAGES: int = 10
+    EVIDENCE_ALLOWED_MIME_TYPES: List[str] = Field(
+        default_factory=lambda: ["image/jpeg", "image/png", "application/pdf"]
+    )
+    EVIDENCE_RETENTION_DAYS: int = 30
+    EVIDENCE_SYNC_TIMEOUT_SECONDS: float = 30.0
+    EVIDENCE_DEFAULT_OCR_PROVIDER: str = "auto"
+
     # --- RAG Knowledge Assistant Settings ---
     RAG_TOP_K: int = 5
     RAG_SIMILARITY_THRESHOLD_DEFAULT: float = 0.72

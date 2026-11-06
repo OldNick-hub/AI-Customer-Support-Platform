@@ -44,6 +44,9 @@ class Customer(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         "Conversation", back_populates="customer"
     )
     tickets: Mapped[List["Ticket"]] = relationship("Ticket", back_populates="customer")  # type: ignore[name-defined]
+    evidence_files: Mapped[List["EvidenceFile"]] = relationship(  # type: ignore[name-defined]
+        "EvidenceFile", back_populates="customer"
+    )
 
 
 class Session(Base, UUIDPrimaryKeyMixin):
@@ -121,6 +124,9 @@ class Conversation(Base, UUIDPrimaryKeyMixin):
     )
     escalation_audits: Mapped[List["EscalationAudit"]] = relationship(  # type: ignore[name-defined]
         "EscalationAudit", back_populates="conversation"
+    )
+    evidence_files: Mapped[List["EvidenceFile"]] = relationship(  # type: ignore[name-defined]
+        "EvidenceFile", back_populates="conversation"
     )
 
 

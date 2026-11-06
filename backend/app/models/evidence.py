@@ -14,6 +14,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Numeric,
     String,
     Text,
@@ -30,29 +31,45 @@ class EvidenceFile(Base, UUIDPrimaryKeyMixin):
     message_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         GUID(), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    conversation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        GUID(), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        GUID(), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     ticket_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         GUID(), ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True, index=True
     )
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    # Staged to disk before Celery task dispatch
+    # Staged to disk before background processing
     storage_uri: Mapped[str] = mapped_column(String(1024), nullable=False)
     sha256_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     status: Mapped[str] = mapped_column(
         String(50), default="STAGED", nullable=False, index=True
-    )  # 'STAGED', 'ANALYZING', 'VERIFIED', 'CLAIM_CONFLICT', 'FLAGGED_UNSAFE', 'PURGED', 'EXPIRED'
+    )  # 'STAGED', 'ANALYZING', 'VERIFIED', 'CLAIM_CONFLICT', 'FLAGGED_UNSAFE', 'FAILED', 'PURGED', 'EXPIRED'
     is_malicious: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     quarantine_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    processing_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     retention_expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )  # Configurable TTL (default 30 days)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )
+    processed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     message: Mapped[Optional["Message"]] = relationship(  # type: ignore[name-defined]
         "Message", back_populates="evidence_files"
+    )
+    conversation: Mapped[Optional["Conversation"]] = relationship(  # type: ignore[name-defined]
+        "Conversation", back_populates="evidence_files"
+    )
+    customer: Mapped[Optional["Customer"]] = relationship(  # type: ignore[name-defined]
+        "Customer", back_populates="evidence_files"
     )
     ticket: Mapped[Optional["Ticket"]] = relationship(  # type: ignore[name-defined]
         "Ticket", back_populates="evidence_files"
@@ -62,6 +79,10 @@ class EvidenceFile(Base, UUIDPrimaryKeyMixin):
     )
     verifications: Mapped[List["EvidenceVerification"]] = relationship(
         "EvidenceVerification", back_populates="evidence_file", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    __table_args__ = (
+        Index("ix_evidence_files_conv_hash", "conversation_id", "sha256_hash"),
     )
 
 
