@@ -127,3 +127,71 @@ class EvidenceExtractionResponse(BaseModel):
     pii_redacted_text: str
     entities: StructuredInvoiceData
 
+
+class ReconciliationRequest(BaseModel):
+    """Payload to initiate reconciliation of conversational claim against document evidence."""
+
+    conversation_id: str = Field(..., description="Target conversation UUID")
+    evidence_id: str = Field(..., description="Target evidence file UUID")
+    claim_text: str = Field(..., min_length=1, description="Customer statement or assertion to verify")
+    message_id: Optional[str] = Field(default=None, description="Optional associated message UUID")
+    idempotency_key: Optional[str] = Field(default=None, description="Optional idempotency key to prevent duplicate runs")
+    async_job: bool = Field(default=False, description="Whether to queue processing in the background")
+
+
+class ReconciliationResponse(BaseModel):
+    """Detailed reconciliation verdict comparing conversational claim against evidence."""
+
+    verification_id: str
+    evidence_id: str
+    conversation_id: str
+    message_id: Optional[str] = None
+    job_id: Optional[str] = None
+    job_status: str
+    reconciliation_status: str
+    overall_match_status: str
+    overall_confidence: float
+    summary: str
+    clarification_status: str
+    clarification_prompt: Optional[str] = None
+    field_comparisons: List[Dict[str, Any]] = Field(default_factory=list)
+    extracted_claims: List[Dict[str, Any]] = Field(default_factory=list)
+    is_quarantined: bool = False
+    created_at: Optional[datetime] = None
+    processing_started_at: Optional[datetime] = None
+    verified_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
+
+
+class ReconciliationJobStatusResponse(BaseModel):
+    """Polling response for asynchronous reconciliation job progress."""
+
+    job_id: str
+    job_status: str
+    verification_id: Optional[str] = None
+    reconciliation_status: Optional[str] = None
+    error_details: Optional[str] = None
+    retry_count: int = 0
+    updated_at: datetime
+
+
+class ClarificationItemResponse(BaseModel):
+    """Individual active or historical clarification request."""
+
+    verification_id: str
+    conversation_id: str
+    status: str
+    prompt_message: str
+    mismatched_fields: List[str] = Field(default_factory=list)
+    missing_fields: List[str] = Field(default_factory=list)
+    uncertain_fields: List[str] = Field(default_factory=list)
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+
+
+class ClarificationResponseRequest(BaseModel):
+    """Customer submission to answer or clarify a discrepancy."""
+
+    response_text: str = Field(..., min_length=1, description="Customer explanation or corrected data")
+    attachment_evidence_id: Optional[str] = Field(default=None, description="Optional new evidence file ID uploaded")
+

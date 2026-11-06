@@ -15,6 +15,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -123,6 +124,12 @@ class EvidenceVerification(Base, UUIDPrimaryKeyMixin):
     evidence_file_id: Mapped[uuid.UUID] = mapped_column(
         GUID(), ForeignKey("evidence_files.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    conversation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        GUID(), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    message_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        GUID(), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     claim_text: Mapped[str] = mapped_column(Text, nullable=False)
     matches_order_id: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     matches_amount: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
@@ -130,11 +137,46 @@ class EvidenceVerification(Base, UUIDPrimaryKeyMixin):
     overall_match_status: Mapped[str] = mapped_column(
         String(50), nullable=False, index=True
     )  # 'VERIFIED_MATCH', 'PARTIAL_MISMATCH', 'TOTAL_CONFLICT', 'LOW_QUALITY'
+    reconciliation_status: Mapped[str] = mapped_column(
+        String(50), default="MATCH", nullable=False, index=True
+    )  # 'MATCH', 'MISMATCH', 'MISSING_FROM_EVIDENCE', 'MISSING_FROM_MESSAGE', 'UNCERTAIN', 'INSUFFICIENT_EVIDENCE'
+    clarification_status: Mapped[str] = mapped_column(
+        String(50), default="NONE", nullable=False, index=True
+    )  # 'NONE', 'PENDING_CUSTOMER', 'RESOLVED', 'SUPERSEDED'
     clarification_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    verified_at: Mapped[datetime] = mapped_column(
+    extracted_claims: Mapped[list] = mapped_column(JSONBType, default=list, nullable=False)
+    field_comparisons: Mapped[dict] = mapped_column(JSONBType, default=dict, nullable=False)
+    overall_confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    job_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    job_status: Mapped[str] = mapped_column(
+        String(50), default="COMPLETED", nullable=False, index=True
+    )  # 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    error_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    processing_started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    verified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     evidence_file: Mapped["EvidenceFile"] = relationship(
         "EvidenceFile", back_populates="verifications"
+    )
+    conversation: Mapped[Optional["Conversation"]] = relationship(  # type: ignore[name-defined]
+        "Conversation", back_populates="verifications"
+    )
+    message: Mapped[Optional["Message"]] = relationship(  # type: ignore[name-defined]
+        "Message", back_populates="verifications"
+    )
+
+    __table_args__ = (
+        Index("ix_evidence_verifications_conv_idem", "conversation_id", "idempotency_key"),
     )

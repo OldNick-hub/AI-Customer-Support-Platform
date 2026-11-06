@@ -22,6 +22,7 @@ from app.modules.knowledge.promoter import IndexPromoter, ReconciliationResult
 from app.modules.knowledge.reader import ActiveIndexReader
 from app.modules.knowledge.watchdog import IndexHealthWatchdog, WatchdogEvaluationResult
 from app.modules.ticketing.worker import EscalationWorker
+from app.modules.evidence.worker import ReconciliationWorker
 from app.services.redis_service import RedisService, get_redis_service
 
 logger = configure_safe_logger(logging.getLogger(__name__))
@@ -39,6 +40,7 @@ class WorkerLifecycleManager:
         promoter: Optional[IndexPromoter] = None,
         watchdog: Optional[IndexHealthWatchdog] = None,
         escalation_worker: Optional[EscalationWorker] = None,
+        reconciliation_worker: Optional[ReconciliationWorker] = None,
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings or default_settings
@@ -60,6 +62,11 @@ class WorkerLifecycleManager:
         self.promoter.session_factory = self.session_factory
         self.escalation_worker = escalation_worker or EscalationWorker(
             session_factory=self.session_factory
+        )
+        self.reconciliation_worker = reconciliation_worker or ReconciliationWorker(
+            session_factory=self.session_factory,
+            poll_interval_seconds=float(getattr(self.settings, "RECONCILIATION_POLL_INTERVAL_SECONDS", 10.0)),
+            stale_timeout_seconds=float(getattr(self.settings, "RECONCILIATION_STALE_TIMEOUT_SECONDS", 300.0)),
         )
 
     async def on_startup(self) -> Dict[str, Any]:
@@ -134,6 +141,23 @@ class WorkerLifecycleManager:
             except Exception as exc:
                 logger.error("Worker Lifecycle: Escalation restart recovery failed: %s", exc)
 
+            # 6. Evidence Reconciliation Startup Recovery & Processing (Day 10)
+            try:
+                recon_recovered = await self.reconciliation_worker.recover_stale_jobs(session)
+                results["reconciliation_recovered"] = recon_recovered
+                logger.info(
+                    "Worker Lifecycle: Reconciliation startup recovery recovered %d stale job(s).",
+                    recon_recovered,
+                )
+                recon_processed = await self.reconciliation_worker.scan_and_process_batch(session)
+                results["reconciliation_startup_processed"] = len(recon_processed)
+                logger.info(
+                    "Worker Lifecycle: Reconciliation startup processing processed %d pending job(s).",
+                    len(recon_processed),
+                )
+            except Exception as exc:
+                logger.error("Worker Lifecycle: Reconciliation startup recovery/processing failed: %s", exc)
+
         # 4. Start Tier 2 Reader Background Periodic Reconciliation
         try:
             self.reader.start_background_reconciliation(
@@ -151,6 +175,14 @@ class WorkerLifecycleManager:
         except Exception as exc:
             logger.error("Worker Lifecycle: Failed to start EscalationWorker background scanner: %s", exc)
 
+        # 7. Start Reconciliation Worker Periodic Background Scanner (Day 10)
+        try:
+            self.reconciliation_worker.start_periodic_scanner()
+            results["reconciliation_worker_started"] = True
+            logger.info("Worker Lifecycle: ReconciliationWorker periodic background scanner started.")
+        except Exception as exc:
+            logger.error("Worker Lifecycle: Failed to start ReconciliationWorker background scanner: %s", exc)
+
         logger.info("Worker startup lifecycle completed successfully.")
         return results
 
@@ -163,6 +195,8 @@ class WorkerLifecycleManager:
             self.reader.stop()
         if self.escalation_worker:
             await self.escalation_worker.stop_async()
+        if self.reconciliation_worker:
+            await self.reconciliation_worker.stop_async()
         logger.info("Worker lifecycle shutdown complete.")
 
 

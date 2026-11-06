@@ -128,6 +128,9 @@ class Conversation(Base, UUIDPrimaryKeyMixin):
     evidence_files: Mapped[List["EvidenceFile"]] = relationship(  # type: ignore[name-defined]
         "EvidenceFile", back_populates="conversation"
     )
+    verifications: Mapped[List["EvidenceVerification"]] = relationship(  # type: ignore[name-defined]
+        "EvidenceVerification", back_populates="conversation"
+    )
 
 
 class Message(Base, UUIDPrimaryKeyMixin):
@@ -160,6 +163,9 @@ class Message(Base, UUIDPrimaryKeyMixin):
     )
     evidence_files: Mapped[List["EvidenceFile"]] = relationship(  # type: ignore[name-defined]
         "EvidenceFile", back_populates="message"
+    )
+    verifications: Mapped[List["EvidenceVerification"]] = relationship(  # type: ignore[name-defined]
+        "EvidenceVerification", back_populates="message"
     )
 
     __table_args__ = (

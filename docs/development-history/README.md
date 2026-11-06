@@ -190,7 +190,15 @@ Zero Silent English translation, entity preservation, session lifecycle manageme
 
 ---
 
-## 9. Subsequent Development Phases
+## 9. Evidence Reconciliation & Intelligent Mismatch Detection
+
+* **[evidence-reconciliation-mismatch-detection-implementation-report.md](evidence-reconciliation-mismatch-detection-implementation-report.md)**
+  *Original Milestone:* Day 10
+  *Scope:* Production evidence reconciliation engine comparing customer claims against OCR-extracted documents. Covers: claim extraction engine (Order IDs, Invoice numbers, Amounts, Currencies, Dates, Products, Merchants, and duplicate billing intent), strict field-by-field comparators with numeric difference calculations (`diff_amount`), currency parity enforcement, date normalization with configurable tolerance, low OCR confidence handling (< 0.70 forcing `UNCERTAIN`), complex intent handling (`INTENT_DOUBLE_CHARGE` requiring multi-transaction proof), quarantined/malicious evidence defense, automated clarification lifecycle (`PENDING_CUSTOMER` -> `RESOLVED` / `SUPERSEDED`), clarification response re-evaluation, background job status tracking, production `ReconciliationWorker` lifecycle integration with concurrency-safe row-locking (`SKIP LOCKED`), stale job crash recovery handling NULL timestamps, composite idempotency deduplication, Alembic migration 005 (`evidence_verifications`), and REST endpoints under `/api/v1/evidence/reconcile`. Verified with 31/31 dedicated Day 10 tests and 641/641 full regression tests.
+
+---
+
+## 10. Subsequent Development Phases
 
 Ongoing and planned technical specifications for upcoming platform capabilities:
 

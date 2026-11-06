@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from app.api.v1.chat import router as chat_router
 from app.api.v1.escalation import router as escalation_router
 from app.api.v1.evidence import router as evidence_router
+from app.api.v1.reconciliation import router as reconciliation_router
 
 api_v1_router = APIRouter()
 
@@ -19,6 +20,9 @@ api_v1_router.include_router(escalation_router)
 
 # Register Multimodal Evidence & OCR router (/api/v1/evidence)
 api_v1_router.include_router(evidence_router)
+
+# Register Evidence Reconciliation & Mismatch Detection router (/api/v1/evidence/reconcile)
+api_v1_router.include_router(reconciliation_router)
 
 __all__ = ["api_v1_router"]
 

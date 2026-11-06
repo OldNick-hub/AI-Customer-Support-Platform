@@ -27,6 +27,7 @@ from app.core.logging import configure_safe_logger
 from app.db.session import AsyncSessionLocal
 from app.modules.knowledge.reader import ActiveIndexReader
 from app.modules.ticketing.worker import EscalationWorker
+from app.modules.evidence.worker import ReconciliationWorker
 
 logger = configure_safe_logger(logging.getLogger(__name__))
 
@@ -63,9 +64,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     escalation_worker.start_periodic_scanner()
     app.state.escalation_worker = escalation_worker
 
+    # Initialize ReconciliationWorker for production runtime (Day 10)
+    reconciliation_worker = ReconciliationWorker(
+        session_factory=AsyncSessionLocal,
+        poll_interval_seconds=float(getattr(settings, "RECONCILIATION_POLL_INTERVAL_SECONDS", 10.0)),
+        stale_timeout_seconds=float(getattr(settings, "RECONCILIATION_STALE_TIMEOUT_SECONDS", 300.0)),
+    )
+    try:
+        async with AsyncSessionLocal() as session:
+            await reconciliation_worker.recover_stale_jobs(session)
+            await reconciliation_worker.scan_and_process_batch(session)
+    except Exception as exc:
+        logger.debug("ReconciliationWorker startup recovery scan skipped or non-fatal error: %s", exc)
+
+    reconciliation_worker.start_periodic_scanner()
+    app.state.reconciliation_worker = reconciliation_worker
+
     yield
 
     logger.info("Shutting down FastAPI application lifespan...")
+    try:
+        await reconciliation_worker.stop_async()
+    except Exception as exc:
+        logger.warning("Error stopping ReconciliationWorker on shutdown: %s", exc)
     try:
         await escalation_worker.stop_async()
     except Exception as exc:
