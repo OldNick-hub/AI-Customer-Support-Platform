@@ -105,6 +105,9 @@ class Conversation(Base, UUIDPrimaryKeyMixin):
         DateTime(timezone=True), default=utc_now, nullable=False, index=True
     )
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    negative_detected_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
 
     session: Mapped["Session"] = relationship("Session", back_populates="conversations")
     customer: Mapped[Optional["Customer"]] = relationship(
@@ -115,6 +118,9 @@ class Conversation(Base, UUIDPrimaryKeyMixin):
     )
     tickets: Mapped[List["Ticket"]] = relationship(  # type: ignore[name-defined]
         "Ticket", back_populates="conversation"
+    )
+    escalation_audits: Mapped[List["EscalationAudit"]] = relationship(  # type: ignore[name-defined]
+        "EscalationAudit", back_populates="conversation"
     )
 
 

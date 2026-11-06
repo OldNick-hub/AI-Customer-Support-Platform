@@ -156,6 +156,8 @@ class ChatMessageData(BaseModel):
     turn_sequence_number: Optional[int] = Field(default=None, description="Atomic monotonic turn sequence number")
     conversation_id: Optional[str] = Field(default=None, description="Active conversation thread UUID")
     context_window_complete: bool = Field(default=True, description="True if timeline history is contiguous")
+    is_escalated: bool = Field(default=False, description="True if conversation has been escalated")
+    escalation_reason: Optional[str] = Field(default=None, description="Escalation trigger condition or reason if escalated")
 
 
 class ResponseMeta(BaseModel):
@@ -313,6 +315,8 @@ async def post_chat_message(
         turn_sequence_number=res.get("turn_sequence_number"),
         conversation_id=res.get("conversation_id"),
         context_window_complete=res.get("context_window_complete", True),
+        is_escalated=res.get("is_escalated", False),
+        escalation_reason=res.get("escalation_reason"),
     )
 
     meta = ResponseMeta(

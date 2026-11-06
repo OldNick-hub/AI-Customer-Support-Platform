@@ -135,16 +135,19 @@ class Ticket(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 
 class EscalationAudit(Base, UUIDPrimaryKeyMixin):
-    """Deterministic audit record for all manual and automated ticket escalations."""
+    """Deterministic audit record for all manual and automated ticket and conversation escalations."""
 
     __tablename__ = "escalation_audits"
 
-    ticket_id: Mapped[uuid.UUID] = mapped_column(
-        GUID(), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True
+    ticket_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        GUID(), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    conversation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        GUID(), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
     )
     trigger_condition: Mapped[str] = mapped_column(
         String(100), nullable=False, index=True
-    )  # 'SLA_BREACH', 'SENTIMENT_FRUSTRATION', 'HIGH_RISK_SAFETY', 'INACTIVITY_TIMEOUT', 'MANUAL_OVERRIDE'
+    )  # 'SLA_BREACH', 'SENTIMENT_FRUSTRATION', 'REPEATED_NEGATIVE_INTERACTIONS', 'UNRESOLVED_NEGATIVE_TIMEOUT', 'URGENT_AFTER_HOURS', 'NORMAL_AFTER_HOURS_QUEUED', 'HIGH_RISK_SAFETY', 'INACTIVITY_TIMEOUT', 'MANUAL_OVERRIDE'
     previous_state: Mapped[str] = mapped_column(String(50), nullable=False)
     new_state: Mapped[str] = mapped_column(String(50), nullable=False)
     escalation_reason: Mapped[str] = mapped_column(Text, nullable=False)
@@ -156,7 +159,10 @@ class EscalationAudit(Base, UUIDPrimaryKeyMixin):
         DateTime(timezone=True), default=utc_now, nullable=False, index=True
     )
 
-    ticket: Mapped["Ticket"] = relationship("Ticket", back_populates="escalation_audits")
+    ticket: Mapped[Optional["Ticket"]] = relationship("Ticket", back_populates="escalation_audits")
+    conversation: Mapped[Optional["Conversation"]] = relationship(  # type: ignore[name-defined]
+        "Conversation", back_populates="escalation_audits"
+    )
     escalated_by_user: Mapped[Optional["User"]] = relationship("User")  # type: ignore[name-defined]
 
 

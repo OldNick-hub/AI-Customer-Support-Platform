@@ -157,6 +157,15 @@ class Settings(BaseSettings):
     BUSINESS_HOUR_START: str = "09:00:00"
     BUSINESS_HOUR_END: str = "17:00:00"
 
+    # --- Intelligent Escalation & After-Hours ---
+    ESCALATION_UNRESOLVED_NEGATIVE_MINUTES: int = 15
+    ESCALATION_REPEATED_NEGATIVE_THRESHOLD: int = 2
+    ESCALATION_FRUSTRATION_INDEX_THRESHOLD: float = 0.70
+    ESCALATION_URGENCY_INDEX_THRESHOLD: float = 0.80
+    ON_CALL_WORKFLOW_ENABLED: bool = True
+    ON_CALL_WEBHOOK_URL: Optional[str] = None
+    ON_CALL_API_KEY: Optional[str] = None
+
     # --- RAG Knowledge Assistant Settings ---
     RAG_TOP_K: int = 5
     RAG_SIMILARITY_THRESHOLD_DEFAULT: float = 0.72

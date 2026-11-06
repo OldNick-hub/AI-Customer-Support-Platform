@@ -21,6 +21,7 @@ from app.core.logging import configure_safe_logger
 from app.modules.knowledge.promoter import IndexPromoter, ReconciliationResult
 from app.modules.knowledge.reader import ActiveIndexReader
 from app.modules.knowledge.watchdog import IndexHealthWatchdog, WatchdogEvaluationResult
+from app.modules.ticketing.worker import EscalationWorker
 from app.services.redis_service import RedisService, get_redis_service
 
 logger = configure_safe_logger(logging.getLogger(__name__))
@@ -37,6 +38,7 @@ class WorkerLifecycleManager:
         reader: Optional[ActiveIndexReader] = None,
         promoter: Optional[IndexPromoter] = None,
         watchdog: Optional[IndexHealthWatchdog] = None,
+        escalation_worker: Optional[EscalationWorker] = None,
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings or default_settings
@@ -56,6 +58,9 @@ class WorkerLifecycleManager:
         # Ensure watchdog is attached to promoter
         self.promoter.watchdog = self.watchdog
         self.promoter.session_factory = self.session_factory
+        self.escalation_worker = escalation_worker or EscalationWorker(
+            session_factory=self.session_factory
+        )
 
     async def on_startup(self) -> Dict[str, Any]:
         """Executes complete worker startup protocol.
@@ -118,6 +123,17 @@ class WorkerLifecycleManager:
             except Exception as exc:
                 logger.error("Worker Lifecycle: Watchdog restart recovery failed: %s", exc)
 
+            # 5. Escalation Worker Restart Recovery (Day 08)
+            try:
+                esc_audits = await self.escalation_worker.scan_and_escalate_batch(session)
+                results["escalation_recovery"] = [a.id for a in esc_audits]
+                logger.info(
+                    "Worker Lifecycle: Escalation restart recovery processed %d unresolved negative cases.",
+                    len(esc_audits),
+                )
+            except Exception as exc:
+                logger.error("Worker Lifecycle: Escalation restart recovery failed: %s", exc)
+
         # 4. Start Tier 2 Reader Background Periodic Reconciliation
         try:
             self.reader.start_background_reconciliation(
@@ -126,6 +142,14 @@ class WorkerLifecycleManager:
             )
         except Exception as exc:
             logger.warning("Worker Lifecycle: Could not start reader background reconciler: %s", exc)
+
+        # 6. Start Escalation Worker Periodic Background Scanner
+        try:
+            self.escalation_worker.start_periodic_scanner()
+            results["escalation_worker_started"] = True
+            logger.info("Worker Lifecycle: EscalationWorker periodic background scanner started.")
+        except Exception as exc:
+            logger.error("Worker Lifecycle: Failed to start EscalationWorker background scanner: %s", exc)
 
         logger.info("Worker startup lifecycle completed successfully.")
         return results
@@ -137,6 +161,8 @@ class WorkerLifecycleManager:
             await self.watchdog.stop_monitoring_scheduler_async()
         if self.reader:
             self.reader.stop()
+        if self.escalation_worker:
+            await self.escalation_worker.stop_async()
         logger.info("Worker lifecycle shutdown complete.")
 
 

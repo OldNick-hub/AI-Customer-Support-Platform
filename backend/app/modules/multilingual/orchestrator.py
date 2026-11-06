@@ -36,6 +36,7 @@ from app.core.logging import configure_safe_logger
 from app.core.pii import PIIMaskingEngine
 from app.models.chat import ChatIdempotencyRecord, ChatOutboxEvent
 from app.models.customer import Conversation, Customer, Message, Session as CustomerSession
+from app.models.sentiment import SentimentLog
 from app.modules.multilingual.config import (
     LOCALIZED_SERVICE_NOTICES,
     MIN_CONFIDENCE_THRESHOLD,
@@ -59,6 +60,8 @@ from app.modules.multilingual.security_scanner import (
 from app.modules.multilingual.translator import TranslationResult, Translator
 from app.modules.rag.generator import RAGResolutionResult
 from app.modules.rag.orchestrator import RAGInternalRequest, RAGOrchestrator
+from app.modules.sentiment.analyzer import SentimentAnalyzer, default_sentiment_analyzer
+from app.modules.ticketing.escalation_service import EscalationService
 
 logger = configure_safe_logger(logging.getLogger(__name__))
 
@@ -102,6 +105,8 @@ class MultilingualOrchestrator:
         outbox_worker: Optional[OutboxWorker] = None,
         encryption: Optional[ApplicationLayerEncryption] = None,
         pii_masker: Optional[PIIMaskingEngine] = None,
+        sentiment_analyzer: Optional[SentimentAnalyzer] = None,
+        escalation_service: Optional[EscalationService] = None,
     ) -> None:
         self.settings = settings or global_settings
         self.session_factory = session_factory
@@ -113,6 +118,8 @@ class MultilingualOrchestrator:
         self.outbox_worker = outbox_worker or OutboxWorker()
         self.encryption = encryption or get_encryption_engine()
         self.pii_masker = pii_masker or PIIMaskingEngine()
+        self.sentiment_analyzer = sentiment_analyzer or default_sentiment_analyzer
+        self.escalation_service = escalation_service or EscalationService()
 
     async def _heartbeat_loop(
         self,
@@ -662,15 +669,28 @@ class MultilingualOrchestrator:
             if lease_lost_event.is_set():
                 raise RuntimeError("Idempotency lease lost mid-flight; aborting finalization.")
 
-            # Allocate sequence via database allocator
-            alloc_res = await session.execute(
-                text("SELECT fn_allocate_next_turn_sequence(:cid)"),
-                {"cid": str(active_conv_id)},
-            )
+            # Allocate sequence via database allocator (PostgreSQL stored fn or SQLite test fallback)
             try:
+                alloc_res = await session.execute(
+                    text("SELECT fn_allocate_next_turn_sequence(:cid)"),
+                    {"cid": str(active_conv_id)},
+                )
                 allocated_turn_seq = int(alloc_res.scalar_one())
-            except (TypeError, ValueError):
-                allocated_turn_seq = 1
+            except Exception:
+                try:
+                    conv_res = await session.execute(
+                        select(Conversation.turn_count).where(Conversation.id == active_conv_id)
+                    )
+                    raw_count = conv_res.scalar_one_or_none()
+                    curr_count = int(raw_count) if isinstance(raw_count, (int, float)) else 0
+                    allocated_turn_seq = curr_count + 1
+                    await session.execute(
+                        update(Conversation)
+                        .where(Conversation.id == active_conv_id)
+                        .values(turn_count=allocated_turn_seq)
+                    )
+                except Exception:
+                    allocated_turn_seq = 1
 
             # Mask customer message & encrypt raw
             if hasattr(self.pii_masker, "mask_text"):
@@ -714,6 +734,30 @@ class MultilingualOrchestrator:
             if asyncio.iscoroutine(r_agent):
                 await r_agent
             await session.flush()
+
+            # Automatic Sentiment Analysis & Escalation Evaluation (Day 08 integration)
+            sentiment_eval = self.sentiment_analyzer.analyze_text(message)
+            sentiment_log = SentimentLog(
+                message_id=cust_msg.id,
+                sentiment_class=sentiment_eval.sentiment_class,
+                confidence_score=sentiment_eval.confidence_score,
+                frustration_index=sentiment_eval.frustration_index,
+                urgency_index=sentiment_eval.urgency_index,
+                trajectory_slope=sentiment_eval.trajectory_slope,
+                requires_escalation=sentiment_eval.requires_escalation,
+                escalation_reason=sentiment_eval.escalation_reason,
+                evaluated_at=datetime.now(timezone.utc),
+            )
+            r_slog = session.add(sentiment_log)
+            if asyncio.iscoroutine(r_slog):
+                await r_slog
+
+            esc_decision = await self.escalation_service.evaluate_and_escalate_turn(
+                session=session,
+                conversation_id=active_conv_id,
+                message=cust_msg,
+                sentiment_result=sentiment_eval,
+            )
 
             # Stage outbox event with deterministic UUIDv5
             outbox_event_id = generate_outbox_event_id(active_conv_id, allocated_turn_seq)
@@ -784,6 +828,20 @@ class MultilingualOrchestrator:
                 "retrieval_latency_ms": getattr(rag_result, "retrieval_latency_ms", 0.0) if rag_result else 0.0,
                 "generation_latency_ms": getattr(rag_result, "generation_latency_ms", 0.0) if rag_result else 0.0,
                 "total_latency_ms": total_latency,
+                "is_escalated": esc_decision.should_escalate or esc_decision.already_escalated,
+                "escalation_reason": esc_decision.trigger_condition or esc_decision.reason,
+                "escalation_decision": {
+                    "should_escalate": esc_decision.should_escalate,
+                    "trigger_condition": esc_decision.trigger_condition,
+                    "reason": esc_decision.reason,
+                    "is_after_hours": esc_decision.is_after_hours,
+                    "routing_destination": esc_decision.routing_destination,
+                    "next_eligible_business_time": (
+                        esc_decision.next_eligible_business_time.isoformat()
+                        if esc_decision.next_eligible_business_time
+                        else None
+                    ),
+                },
             }
 
             # Finalize idempotency record in Tx2

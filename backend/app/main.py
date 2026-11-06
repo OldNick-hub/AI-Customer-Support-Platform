@@ -26,16 +26,20 @@ from app.core.exceptions import PlatformException
 from app.core.logging import configure_safe_logger
 from app.db.session import AsyncSessionLocal
 from app.modules.knowledge.reader import ActiveIndexReader
+from app.modules.ticketing.worker import EscalationWorker
 
 logger = configure_safe_logger(logging.getLogger(__name__))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Minimal API server lifespan context manager.
+    """FastAPI application lifespan context manager.
 
-    Loads active vector index metadata into memory on startup if present.
-    DOES NOT run worker schedulers, Celery loops, promotion reconcilers, or watchdog loops.
+    Coordinates production lifecycle:
+    1. Loads active vector index metadata into memory on startup (ActiveIndexReader).
+    2. Runs EscalationWorker startup restart recovery for overdue 15m negative cases.
+    3. Starts EscalationWorker periodic background scanner.
+    4. Gracefully terminates and awaits background tasks on application shutdown.
     """
     logger.info("Initializing FastAPI application lifespan...")
     reader = ActiveIndexReader(settings=settings)
@@ -45,9 +49,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.debug("Reader startup sync skipped or encountered non-fatal error: %s", exc)
 
+    # Initialize EscalationWorker for production runtime
+    escalation_worker = EscalationWorker(
+        session_factory=AsyncSessionLocal,
+        poll_interval_seconds=float(getattr(settings, "ESCALATION_POLL_INTERVAL_SECONDS", 30.0)),
+    )
+    try:
+        async with AsyncSessionLocal() as session:
+            await escalation_worker.scan_and_escalate_batch(session)
+    except Exception as exc:
+        logger.debug("EscalationWorker startup recovery scan skipped or non-fatal error: %s", exc)
+
+    escalation_worker.start_periodic_scanner()
+    app.state.escalation_worker = escalation_worker
+
     yield
 
     logger.info("Shutting down FastAPI application lifespan...")
+    try:
+        await escalation_worker.stop_async()
+    except Exception as exc:
+        logger.warning("Error stopping EscalationWorker on shutdown: %s", exc)
     reader.stop()
 
 
