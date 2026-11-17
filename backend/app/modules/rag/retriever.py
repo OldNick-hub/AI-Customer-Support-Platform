@@ -53,6 +53,7 @@ STATUTORY_POLICY_KEYWORDS: Set[str] = {
 class RetrievedChunk(BaseModel):
     """Authoritative retrieved chunk with complete provenance and similarity metadata."""
 
+    tenant_id: str = "default"
     vector_id: int
     chunk_id: str
     version_id: str
@@ -158,8 +159,14 @@ class SecurityAwareRetriever:
             target_cat = category.strip().upper()
             conditions.append(Document.category == target_cat)
 
+        # Tenant Boundary Isolation
+        target_tenant = getattr(security_context, "tenant_id", "default") or "default"
+        conditions.append(Document.tenant_id == target_tenant)
+        conditions.append(DocumentChunk.tenant_id == target_tenant)
+
         stmt = (
             select(
+                Document.tenant_id,
                 DocumentChunk.faiss_vector_id,
                 DocumentChunk.id.label("chunk_id"),
                 DocumentChunk.chunk_index,
@@ -199,6 +206,7 @@ class SecurityAwareRetriever:
                 continue
 
             candidates[row["faiss_vector_id"]] = {
+                "tenant_id": row.get("tenant_id", "default"),
                 "vector_id": row["faiss_vector_id"],
                 "chunk_id": str(row["chunk_id"]),
                 "chunk_index": row["chunk_index"],
@@ -419,6 +427,7 @@ class SecurityAwareRetriever:
             cand_data = candidates[vid_int]
 
             chunk_obj = RetrievedChunk(
+                tenant_id=cand_data.get("tenant_id", "default"),
                 vector_id=vid_int,
                 chunk_id=cand_data["chunk_id"],
                 version_id=cand_data["version_id"],

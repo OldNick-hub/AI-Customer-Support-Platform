@@ -33,6 +33,11 @@ class PIIMaskingEngine:
     # Expiration date pattern (MM/YY or MM/YYYY)
     EXP_PATTERN = re.compile(r"\b(?:exp|expires|expiry)\s*[:=]?\s*(0[1-9]|1[0-2])\s*[/.-]\s*(\d{2,4})\b", re.IGNORECASE)
 
+    # API key / bearer / query-key secret patterns (must never leak in logs or DB)
+    GOOGLE_API_KEY_PATTERN = re.compile(r"\bAIza[0-9A-Za-z\-_]{20,}\b")
+    URL_KEY_PARAM_PATTERN = re.compile(r"([?&]key=)([^&\s\"']+)", re.IGNORECASE)
+    BEARER_TOKEN_PATTERN = re.compile(r"\b(Bearer\s+)[A-Za-z0-9\-._~+/]{16,}=*", re.IGNORECASE)
+
     @classmethod
     def _luhn_check(cls, digits: str) -> bool:
         """Validates a candidate digit string against the Luhn (mod 10) algorithm."""
@@ -100,15 +105,23 @@ class PIIMaskingEngine:
         return cls.mask_text(text)
 
     @classmethod
+    def mask_secrets(cls, text: str) -> str:
+        """Scrubs Google/Gemini API keys, URL ?key= params, and Bearer tokens."""
+        sanitized = cls.GOOGLE_API_KEY_PATTERN.sub("[API_KEY_REDACTED]", text)
+        sanitized = cls.URL_KEY_PARAM_PATTERN.sub(r"\1[REDACTED]", sanitized)
+        return cls.BEARER_TOKEN_PATTERN.sub(r"\1[REDACTED]", sanitized)
+
+    @classmethod
     def mask_text(cls, text: Optional[str]) -> str:
-        """Executes full pipeline masking across cards, emails, phones, SSNs, and CVVs.
+        """Executes full pipeline masking across secrets, cards, emails, phones, SSNs, and CVVs.
 
         This is the default transformation applied to all messages before database persistence.
         """
         if not text:
             return ""
 
-        sanitized = cls.mask_credit_cards(text)
+        sanitized = cls.mask_secrets(text)
+        sanitized = cls.mask_credit_cards(sanitized)
         sanitized = cls.mask_cvv(sanitized)
         sanitized = cls.mask_ssn(sanitized)
         sanitized = cls.mask_emails(sanitized)

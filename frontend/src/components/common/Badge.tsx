@@ -8,6 +8,7 @@ interface BadgeProps {
   size?: 'sm' | 'md';
   dot?: boolean;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 export const Badge: React.FC<BadgeProps> = ({
@@ -16,6 +17,7 @@ export const Badge: React.FC<BadgeProps> = ({
   size = 'md',
   dot = false,
   className = '',
+  style,
 }) => {
   const getColors = (): { bg: string; text: string; border: string; dotColor: string } => {
     switch (variant) {
@@ -89,6 +91,7 @@ export const Badge: React.FC<BadgeProps> = ({
         border: `1px solid ${border}`,
         lineHeight: 1.2,
         letterSpacing: '0.01em',
+        ...style,
       }}
     >
       {dot && (

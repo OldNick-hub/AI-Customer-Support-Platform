@@ -111,6 +111,7 @@ class Conversation(Base, UUIDPrimaryKeyMixin):
     negative_detected_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    custom_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     session: Mapped["Session"] = relationship("Session", back_populates="conversations")
     customer: Mapped[Optional["Customer"]] = relationship(

@@ -268,9 +268,11 @@ def get_multilingual_orchestrator() -> Any:
     global _multilingual_orchestrator_instance
     if _multilingual_orchestrator_instance is None:
         from app.db.session import AsyncSessionLocal
+        from app.modules.multilingual.lifecycle_manager import ConversationLifecycleManager
         from app.modules.multilingual.orchestrator import MultilingualOrchestrator
         _multilingual_orchestrator_instance = MultilingualOrchestrator(
             session_factory=AsyncSessionLocal,
+            lifecycle_manager=ConversationLifecycleManager(),
             rag_orchestrator=get_rag_orchestrator(),
         )
     return _multilingual_orchestrator_instance

@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import secrets
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import uuid
@@ -38,6 +39,7 @@ from app.models.chat import ChatIdempotencyRecord, ChatOutboxEvent
 from app.models.customer import Conversation, Customer, Message, Session as CustomerSession
 from app.models.sentiment import SentimentLog
 from app.modules.multilingual.config import (
+    HOT_CONTEXT_WINDOW_SIZE,
     LOCALIZED_SERVICE_NOTICES,
     MIN_CONFIDENCE_THRESHOLD,
     MULTILINGUAL_CLARIFICATION_PROMPT,
@@ -53,14 +55,20 @@ from app.modules.multilingual.outbox_worker import (
     OutboxWorker,
     generate_outbox_event_id,
 )
+from app.modules.multilingual.correction_handler import SlotCorrectionEngine
+from app.modules.multilingual.query_decomposer import QueryDecomposer
 from app.modules.multilingual.security_scanner import (
     PreTranslationSecurityResult,
     PreTranslationSecurityScanner,
 )
 from app.modules.multilingual.translator import TranslationResult, Translator
-from app.modules.rag.generator import RAGResolutionResult
+from app.modules.rag.generator import RAGResolutionResult, get_tone_directive
 from app.modules.rag.orchestrator import RAGInternalRequest, RAGOrchestrator
-from app.modules.sentiment.analyzer import SentimentAnalyzer, default_sentiment_analyzer
+from app.modules.sentiment.analyzer import (
+    SentimentAnalysisResult,
+    SentimentAnalyzer,
+    default_sentiment_analyzer,
+)
 from app.modules.ticketing.escalation_service import EscalationService
 
 logger = configure_safe_logger(logging.getLogger(__name__))
@@ -107,6 +115,8 @@ class MultilingualOrchestrator:
         pii_masker: Optional[PIIMaskingEngine] = None,
         sentiment_analyzer: Optional[SentimentAnalyzer] = None,
         escalation_service: Optional[EscalationService] = None,
+        query_decomposer: Optional[QueryDecomposer] = None,
+        slot_correction_engine: Optional[SlotCorrectionEngine] = None,
     ) -> None:
         self.settings = settings or global_settings
         self.session_factory = session_factory
@@ -115,6 +125,8 @@ class MultilingualOrchestrator:
         self.translator = translator or Translator()
         self.lifecycle_manager = lifecycle_manager
         self.rag_orchestrator = rag_orchestrator
+        self.query_decomposer = query_decomposer or QueryDecomposer()
+        self.slot_correction_engine = slot_correction_engine or SlotCorrectionEngine()
         self.outbox_worker = outbox_worker or OutboxWorker()
         self.encryption = encryption or get_encryption_engine()
         self.pii_masker = pii_masker or PIIMaskingEngine()
@@ -165,6 +177,118 @@ class MultilingualOrchestrator:
                         break
             except Exception as exc:
                 logger.error("Error in heartbeat loop for record %s: %s", record_id, exc)
+
+    # Anchored pure conversational phrases (no product/policy/troubleshooting content)
+    _GREETING_PATTERN = re.compile(
+        r"^(?:hi|hello|hey|hi\s+there|hello\s+there|hey\s+there|greetings|"
+        r"good\s+morning|good\s+afternoon|good\s+evening|yo|"
+        r"hola|buenos\s+d[ií]as|buenas\s+tardes|buenas\s+noches|"
+        r"bonjour|salut|bonsoir|"
+        r"hallo|guten\s+morgen|guten\s+tag|guten\s+abend|servus|moin|"
+        r"namaste|namaskar|नमस्ते|नमस्कार)$",
+        re.IGNORECASE,
+    )
+    _HOW_ARE_YOU_PATTERN = re.compile(
+        r"^(?:(?:hi|hello|hey|hola|bonjour|hallo|namaste|नमस्ते)[,\s]+)?(?:"
+        r"how\s+are\s+you(?:\s+doing)?|how\s+is\s+it\s+going|"
+        r"c[oó]mo\s+est[aá]s|que\s+tal|comment\s+[çc]a\s+va|comment\s+allez[\s-]vous|"
+        r"wie\s+geht\s+es\s+(?:dir|ihnen)|wie\s+geht'?s|"
+        r"kaise\s+ho|aap\s+kaise\s+hain|कैसे\s+हो|आप\s+कैसे\s+हैं)$",
+        re.IGNORECASE,
+    )
+    _GRATITUDE_PATTERN = re.compile(
+        r"^(?:thanks|thank\s+you(?:\s+so\s+much|\s+very\s+much)?|"
+        r"gracias|muchas\s+gracias|"
+        r"merci(?:\s+beaucoup)?|"
+        r"danke(?:\s+sch[oö]n)?|vielen\s+dank|"
+        r"shukriya|dhanyawad|dhanyavaad|धन्यवाद|शुक्रिया)$",
+        re.IGNORECASE,
+    )
+    _ACKNOWLEDGMENT_PATTERN = re.compile(
+        r"^(?:ok|okay|alright|got\s+it|sounds\s+good|makes\s+sense|no\s+problem|sure|great|awesome|cool|"
+        r"vale|d'accord|alles\s+klar|theek\s+hai|ठीक\s+है)$",
+        re.IGNORECASE,
+    )
+    _FAREWELL_PATTERN = re.compile(
+        r"^(?:bye|goodbye|bye\s+bye|see\s+you|take\s+care|have\s+a\s+good\s+day|"
+        r"adi[oó]s|hasta\s+luego|chao|"
+        r"au\s+revoir|[àa]\s+bient[oô]t|"
+        r"tsch[uü]ss|tschuess|auf\s+wiedersehen|"
+        r"alvida|अलविदा)$",
+        re.IGNORECASE,
+    )
+
+    _CONVERSATIONAL_REPLIES: Dict[str, Dict[str, str]] = {
+        "en": {
+            "greeting": "Hello! Welcome to Customer Support. How can I assist you with your order, delivery, or product today?",
+            "how_are_you": "I'm doing great, thank you for asking! How can I help you today?",
+            "gratitude": "You're very welcome! Please let me know if there's anything else I can do for you.",
+            "acknowledgment": "Got it! Let me know what you'd like to do next.",
+            "farewell": "Take care! Feel free to reach back out anytime if you need a hand.",
+        },
+        "es": {
+            "greeting": "¡Hola! Bienvenido a Atención al Cliente. ¿Cómo puedo ayudarte hoy con tu pedido o consulta?",
+            "how_are_you": "¡Muy bien, gracias por preguntar! ¿En qué puedo colaborarte hoy?",
+            "gratitude": "¡Con gusto! Avísame si necesitas algo más.",
+            "acknowledgment": "¡Entendido! Dime en qué más te puedo ayudar.",
+            "farewell": "¡Hasta pronto! Escríbenos cuando lo necesites.",
+        },
+        "fr": {
+            "greeting": "Bonjour et bienvenue au service client ! Comment puis-je vous aider aujourd'hui concernant votre commande ou une question ?",
+            "how_are_you": "Je vais très bien, merci de demander ! Comment puis-je vous aider ?",
+            "gratitude": "Avec plaisir ! N'hésitez pas si vous avez d'autres questions.",
+            "acknowledgment": "C'est bien noté ! Que souhaitez-vous faire ensuite ?",
+            "farewell": "Bonne journée ! N'hésitez pas à revenir vers nous si besoin.",
+        },
+        "de": {
+            "greeting": "Hallo und willkommen beim Kundenservice! Wie kann ich Ihnen heute bei Ihrer Bestellung oder Frage behilflich sein?",
+            "how_are_you": "Mir geht es sehr gut, vielen Dank der Nachfrage! Wie kann ich Ihnen helfen?",
+            "gratitude": "Sehr gerne! Lassen Sie mich wissen, wenn Sie noch etwas benötigen.",
+            "acknowledgment": "Alles klar! Sagen Sie mir gerne, wie ich weiterhelfen kann.",
+            "farewell": "Auf Wiedersehen und einen schönen Tag! Melden Sie sich jederzeit gerne wieder.",
+        },
+        "hi": {
+            "greeting": "नमस्ते! ग्राहक सहायता में आपका स्वागत है। आज मैं आपके ऑर्डर, डिलीवरी या किसी भी समस्या में आपकी क्या मदद कर सकता हूँ?",
+            "how_are_you": "मैं बहुत अच्छा हूँ, पूछने के लिए धन्यवाद! बताएं, आज मैं आपकी क्या सहायता कर सकता हूँ?",
+            "gratitude": "बहुत स्वागत है आपका! अगर कोई और भी सवाल हो तो बेझिझक बताएं।",
+            "acknowledgment": "बिल्कुल ठीक! बताएं आगे क्या करना है।",
+            "farewell": "अलविदा! जब भी ज़रूरत हो, आप कभी भी यहाँ संपर्क कर सकते हैं।",
+        },
+    }
+
+    @classmethod
+    def _classify_conversational_intent(cls, raw_text: Optional[str]) -> Optional[str]:
+        """Detects pure conversational small-talk so greetings never trigger KB refusal."""
+        if not raw_text:
+            return None
+        normalized = re.sub(r"[!?.]+$", "", " ".join(raw_text.strip().split())).strip()
+        if not normalized or len(normalized) > 64:
+            return None
+        # Combined greeting + greeting (e.g. "Hi, good morning")
+        parts = [p.strip(" ,;:-") for p in re.split(r"[,;]+", normalized) if p.strip(" ,;:-")]
+        if cls._HOW_ARE_YOU_PATTERN.match(normalized):
+            return "how_are_you"
+        if cls._GREETING_PATTERN.match(normalized) or (
+            parts and len(parts) <= 2 and all(cls._GREETING_PATTERN.match(p) for p in parts)
+        ):
+            return "greeting"
+        if cls._GRATITUDE_PATTERN.match(normalized) or (
+            parts and len(parts) <= 2 and all(cls._GRATITUDE_PATTERN.match(p) for p in parts)
+        ):
+            return "gratitude"
+        if cls._ACKNOWLEDGMENT_PATTERN.match(normalized) or (
+            parts and len(parts) <= 2 and all(cls._ACKNOWLEDGMENT_PATTERN.match(p) for p in parts)
+        ):
+            return "acknowledgment"
+        if cls._FAREWELL_PATTERN.match(normalized):
+            return "farewell"
+        return None
+
+    @classmethod
+    def _render_conversational_reply(cls, intent: str, lang_code: str) -> str:
+        """Returns a polite localized reply for pure conversational turns."""
+        lang_map = cls._CONVERSATIONAL_REPLIES.get(lang_code, cls._CONVERSATIONAL_REPLIES["en"])
+        return lang_map.get(intent, cls._CONVERSATIONAL_REPLIES["en"]["greeting"])
 
     async def reserve_idempotency_key(
         self,
@@ -381,6 +505,38 @@ class MultilingualOrchestrator:
         # 3. Count parity & 4. Identifier parity
         return source_indices == found_indices
 
+    async def _load_conversation_history(
+        self,
+        session: AsyncSession,
+        conversation_id: Optional[uuid.UUID],
+    ) -> List[Dict[str, str]]:
+        """Loads up to HOT_CONTEXT_WINDOW_SIZE recent turns strictly for active conversation."""
+        if not conversation_id:
+            return []
+        try:
+            stmt = (
+                select(Message)
+                .where(Message.conversation_id == conversation_id)
+                .order_by(Message.created_at.desc(), Message.turn_sequence_number.desc())
+                .limit(HOT_CONTEXT_WINDOW_SIZE)
+            )
+            res = await session.execute(stmt)
+            rows = list(res.scalars().all())
+            history: List[Dict[str, str]] = []
+            for m in reversed(rows):
+                if isinstance(m, Message) and m.content:
+                    history.append(
+                        {
+                            "role": m.sender_type,
+                            "content": m.content,
+                            "language": m.detected_language or "en",
+                        }
+                    )
+            return history
+        except Exception as exc:
+            logger.debug("Skipping conversation history lookup for %s: %s", conversation_id, exc)
+            return []
+
     async def process_chat_turn(
         self,
         session: AsyncSession,
@@ -401,21 +557,81 @@ class MultilingualOrchestrator:
         corr_id = correlation_id or str(uuid.uuid4())
 
         # Step 1: Session Token Validation & Expiry Check
+        sess_obj: Optional[CustomerSession] = None
         if self.lifecycle_manager:
-            eval_res = await self.lifecycle_manager.evaluate_session_lifecycle(session_id)
-            if eval_res.state == "EXPIRED":
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session token expired.")
+            if hasattr(self.lifecycle_manager, "evaluate_session_lifecycle"):
+                eval_res = await self.lifecycle_manager.evaluate_session_lifecycle(session_id)
+                if eval_res.state == "EXPIRED":
+                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session token expired.")
+            else:
+                try:
+                    sess_res = await session.execute(
+                        select(CustomerSession).where(CustomerSession.id == session_id)
+                    )
+                    candidate_sess = sess_res.scalars().first()
+                    if isinstance(candidate_sess, CustomerSession):
+                        sess_obj = candidate_sess
+                        eval_res = self.lifecycle_manager.evaluate_session_state(sess_obj)
+                        if not eval_res.is_authenticated:
+                            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session token expired.")
+                except HTTPException:
+                    raise
+                except Exception:
+                    pass
 
         # Step 4: Session Lifecycle & Active Conversation Resolution
         context_restored = False
         active_conv_id = conversation_id
+
+        # P0 BOLA Defense: Validate ownership of client-supplied conversation_id
+        if conversation_id:
+            res_target = await session.execute(
+                select(Conversation).where(Conversation.id == conversation_id)
+            )
+            target_conv = res_target.scalars().first()
+            if not target_conv:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Conversation not found.",
+                )
+
+            is_staff = False
+            if auth_context and any(
+                r.upper() in {"ADMIN", "SUPERVISOR", "AGENT", "STAFF", "SUPPORT_AGENT", "SUPER_ADMIN", "GLOBAL_ADMIN"}
+                for r in (auth_context.roles or [])
+            ):
+                is_staff = True
+
+            if not is_staff:
+                if target_conv.customer_id is not None and (not customer_id or target_conv.customer_id != customer_id):
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Conversation not found.",
+                    )
+                if target_conv.session_id != session_id:
+                    if not (customer_id and target_conv.customer_id == customer_id):
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Conversation not found.",
+                        )
         if self.lifecycle_manager:
-            restoration = await self.lifecycle_manager.restore_session_if_needed(session, session_id)
-            if restoration.restored:
-                context_restored = True
-                active_conv_id = restoration.conversation_id
-            elif not active_conv_id:
-                active_conv_id = restoration.conversation_id
+            if hasattr(self.lifecycle_manager, "restore_session_if_needed"):
+                restoration = await self.lifecycle_manager.restore_session_if_needed(session, session_id)
+                if restoration.restored:
+                    context_restored = True
+                    active_conv_id = restoration.conversation_id
+                elif not active_conv_id:
+                    active_conv_id = restoration.conversation_id
+            elif sess_obj is not None and sess_obj.status == "IDLE_CLOSED":
+                restoration = await self.lifecycle_manager.restore_session(
+                    db=session,
+                    session_id=session_id,
+                    authenticated_customer_id=str(customer_id) if customer_id else None,
+                )
+                if restoration.is_restored:
+                    context_restored = True
+                if not active_conv_id and restoration.new_conversation_id:
+                    active_conv_id = uuid.UUID(str(restoration.new_conversation_id))
 
         if not active_conv_id:
             # Attach to existing open conversation for this session if available
@@ -450,6 +666,9 @@ class MultilingualOrchestrator:
                     await r_conv
                 await session.flush()
                 active_conv_id = conv.id
+
+        # Load recent turn history strictly scoped to active conversation (hot context window)
+        conversation_history = await self._load_conversation_history(session, active_conv_id)
 
         # Step 2 & 3: Idempotency Key Evaluation & Transaction 1
         idempotency_record = None
@@ -543,7 +762,7 @@ class MultilingualOrchestrator:
                     "technical_error": False,
                     "technical_error_code": None,
                     "detected_language": "und",
-                    "detected_language_confidence": det_res.confidence,
+                    "detected_language_confidence": det_conf,
                     "primary_language": "und",
                     "context_restored": context_restored,
                     "turn_sequence_number": None,
@@ -560,110 +779,224 @@ class MultilingualOrchestrator:
                     "total_latency_ms": 0.0,
                 }
 
-            # Step 7 & 8: Entity Preservation & Inbound Translation
-            english_query = message
-            vault = EntityPreservationVault()
-            if inbound_trans and source_lang:
-                vaulted_query = vault.mask_entities(message)
-                try:
-                    trans_res: TranslationResult = await self.translator.translate_inbound(
-                        text=vaulted_query,
-                        source_language=source_lang,
-                    )
-                    english_query = vault.unmask_entities(trans_res.translated_text)
-                except Exception as exc:
-                    logger.error("Inbound translation failed: %s", exc)
-                    fallback_text = LOCALIZED_SERVICE_NOTICES.get(source_lang, LOCALIZED_SERVICE_NOTICES["en"])
-                    return {
-                        "message_id": str(uuid.uuid4()),
-                        "reply_text": fallback_text,
-                        "is_resolved": False,
-                        "refusal_triggered": False,
-                        "refusal_reason": None,
-                        "clarification_needed": False,
-                        "technical_error": True,
-                        "technical_error_code": "TRANSLATION_UNAVAILABLE",
-                        "detected_language": source_lang,
-                        "detected_language_confidence": det_res.confidence,
-                        "primary_language": source_lang,
-                        "context_restored": context_restored,
-                        "turn_sequence_number": None,
-                        "conversation_id": str(active_conv_id),
-                        "context_window_complete": True,
-                        "citations": [],
-                        "confidence_score": 0.0,
-                        "effective_as_of_date_applied": str(effective_as_of_date or date.today()),
-                        "claim_verification": {"total_claims": 0, "verified_claims": 0, "all_claims_verified": True},
-                        "model_used": "translator_fallback",
-                        "retrieval_latency_ms": 0.0,
-                        "generation_latency_ms": 0.0,
-                        "total_latency_ms": 0.0,
-                    }
-
-            # Step 9: RAG Retrieval & English AI Response Generation
-            rag_result = None
-            if self.rag_orchestrator:
-                rag_req = RAGInternalRequest(
-                    query=english_query,
-                    session_token=auth_context.session_token if auth_context else str(session_id),
-                    user_id_or_email=auth_context.user_id_or_email if auth_context else str(customer_id),
-                    jwt_claims=auth_context.jwt_claims if auth_context else {},
-                    effective_as_of_date=effective_as_of_date,
-                    product_line=product_line,
-                    document_code=document_code,
-                    correlation_id=corr_id,
+            # Step 6b: Pure Conversational Small-Talk Routing (before KB RAG / translation)
+            # Only matches pure greetings/gratitude/farewells so product/policy/troubleshooting
+            # questions (e.g. "Hi, what is the return policy?") still run full RAG & KB grounding.
+            smalltalk_intent = self._classify_conversational_intent(message)
+            model_used_override: Optional[str] = None
+            if smalltalk_intent:
+                reply_lang = target_lang or source_lang or "en"
+                final_reply_text = self._render_conversational_reply(smalltalk_intent, reply_lang)
+                rag_result = None
+                citations = []
+                confidence = 1.0
+                is_resolved = True
+                refusal_triggered = False
+                refusal_reason = None
+                claims_res = {"total_claims": 0, "verified_claims": 0, "all_claims_verified": True}
+                technical_error = False
+                technical_error_code = None
+                active_slots = {}
+                correction_signal = None
+                sentiment_class = "neutral"
+                sentiment_eval = SentimentAnalysisResult(
+                    sentiment_class="neutral",
+                    confidence_score=1.0,
+                    frustration_index=0.0,
+                    urgency_index=0.0,
+                    trajectory_slope=0.0,
+                    requires_escalation=False,
+                    escalation_reason=None,
                 )
-                rag_result = await self.rag_orchestrator.process_query(request=rag_req, session=session)
+                tone_directive = ""
+                model_used_override = "conversational_router"
+            else:
+                # Step 7 & 8: Entity Preservation & Inbound Translation
+                english_query = message
+                vault = EntityPreservationVault()
+                if inbound_trans and source_lang:
+                    try:
+                        trans_res: TranslationResult = await self.translator.translate_inbound(
+                            text=message,
+                            source_language=source_lang,
+                            vault=vault,
+                        )
+                        if trans_res.is_successful:
+                            english_query = trans_res.translated_text
+                        else:
+                            raise RuntimeError(trans_res.error_reason or "Translation unsuccessful")
+                    except Exception as exc:
+                        logger.error("Inbound translation failed: %s", exc)
+                        fallback_text = LOCALIZED_SERVICE_NOTICES.get(source_lang, LOCALIZED_SERVICE_NOTICES["en"])
+                        return {
+                            "message_id": str(uuid.uuid4()),
+                            "reply_text": fallback_text,
+                            "is_resolved": False,
+                            "refusal_triggered": False,
+                            "refusal_reason": None,
+                            "clarification_needed": False,
+                            "technical_error": True,
+                            "technical_error_code": "TRANSLATION_UNAVAILABLE",
+                            "detected_language": source_lang,
+                            "detected_language_confidence": det_conf,
+                            "primary_language": source_lang,
+                            "context_restored": context_restored,
+                            "turn_sequence_number": None,
+                            "conversation_id": str(active_conv_id),
+                            "context_window_complete": True,
+                            "citations": [],
+                            "confidence_score": 0.0,
+                            "effective_as_of_date_applied": str(effective_as_of_date or date.today()),
+                            "claim_verification": {"total_claims": 0, "verified_claims": 0, "all_claims_verified": True},
+                            "model_used": "translator_fallback",
+                            "retrieval_latency_ms": 0.0,
+                            "generation_latency_ms": 0.0,
+                            "total_latency_ms": 0.0,
+                        }
 
-            reply_text = (
-                getattr(rag_result, "answer", getattr(rag_result, "generated_response", None))
-                if rag_result
-                else f"Response to: {english_query}"
-            )
-            citations = rag_result.citations if rag_result else []
-            confidence = rag_result.confidence_score if rag_result else 1.0
-            is_resolved = rag_result.is_resolved if rag_result else True
-            refusal_triggered = rag_result.refusal_triggered if rag_result else False
-            refusal_reason = rag_result.refusal_reason if rag_result else None
-            claims_res = (
-                {
-                    "total_claims": rag_result.claim_verification.total_claims,
-                    "verified_claims": rag_result.claim_verification.verified_claims,
-                    "all_claims_verified": rag_result.claim_verification.all_claims_verified,
-                }
-                if rag_result
-                else {"total_claims": 0, "verified_claims": 0, "all_claims_verified": True}
-            )
-
-            # Step 10: Outbound Response Translation & Entity Re-attachment
-            final_reply_text = reply_text
-            if target_lang and target_lang != "en" and not refusal_triggered:
-                # Shield citations
-                shielded_reply = vault.mask_citations(reply_text)
-                try:
-                    out_trans: TranslationResult = await self.translator.translate_outbound(
-                        text=shielded_reply,
-                        target_language=target_lang,
+                # Step 8b: Deterministic Slot Extraction & Customer Correction Tracking
+                prior_slots = (
+                    self.slot_correction_engine.process_conversation_messages(conversation_history)
+                    if conversation_history
+                    else None
+                )
+                active_slots, correction_signal = self.slot_correction_engine.process_turn(
+                    english_query, active_slots=prior_slots
+                )
+                if correction_signal and correction_signal.has_correction:
+                    logger.info(
+                        "Customer slot correction detected: slot=%s, old=%s, new=%s",
+                        correction_signal.slot_name,
+                        correction_signal.old_value,
+                        correction_signal.new_value,
                     )
-                    unmasked_reply = vault.unmask_citations(out_trans.translated_text)
-                    # 4-point structural parity check
-                    if not self.evaluate_citation_parity(citations, unmasked_reply):
-                        logger.warning("Citation structural parity check failed for target lang %s", target_lang)
+
+                # Step 8c: Pre-Generation Sentiment Analysis & Dynamic Tone Adaptation
+                try:
+                    sentiment_eval = self.sentiment_analyzer.analyze_text(message)
+                    # Fallback to neutral if confidence score is low
+                    if sentiment_eval.confidence_score < 0.60:
+                        sentiment_class = "neutral"
+                    else:
+                        sentiment_class = sentiment_eval.sentiment_class
+                except Exception as exc:
+                    logger.warning("Pre-generation sentiment analysis failed: %s; falling back to neutral tone.", exc)
+                    sentiment_class = "neutral"
+                    sentiment_eval = SentimentAnalysisResult(
+                        sentiment_class="neutral",
+                        confidence_score=0.0,
+                        frustration_index=0.0,
+                        urgency_index=0.0,
+                        trajectory_slope=0.0,
+                        requires_escalation=False,
+                        escalation_reason=None,
+                    )
+
+                tone_directive = get_tone_directive(sentiment_class)
+
+                # Step 9: Multi-Intent Decomposition, RAG Retrieval & English AI Response Generation
+                rag_result = None
+                decomp = self.query_decomposer.decompose(english_query)
+
+                if decomp.is_multi_intent and len(decomp.sub_queries) > 1 and self.rag_orchestrator:
+                    sub_answers = []
+                    all_citations = []
+                    for sub_q in decomp.sub_queries:
+                        sub_req = RAGInternalRequest(
+                            query=sub_q.text,
+                            raw_customer_query=sub_q.text,
+                            preferred_language=target_lang or source_lang or "en",
+                            session_token=auth_context.session_token if auth_context else str(session_id),
+                            user_id_or_email=auth_context.user_id_or_email if auth_context else str(customer_id),
+                            jwt_claims=auth_context.jwt_claims if auth_context else {},
+                            effective_as_of_date=effective_as_of_date,
+                            product_line=product_line,
+                            document_code=document_code,
+                            tone_directive=tone_directive,
+                            sentiment_class=sentiment_class,
+                            conversation_history=conversation_history,
+                            correlation_id=corr_id,
+                        )
+                        sub_res = await self.rag_orchestrator.process_query(request=sub_req, session=session)
+                        ans = (
+                            getattr(sub_res, "answer", getattr(sub_res, "generated_response", None))
+                            or f"Response to: {sub_q.text}"
+                        )
+                        sub_answers.append((sub_q, ans))
+                        if getattr(sub_res, "citations", None):
+                            all_citations.extend(sub_res.citations)
+                        rag_result = sub_res
+
+                    reply_text = self.query_decomposer.synthesize_combined_response(sub_answers)
+                    citations = all_citations
+                else:
+                    if self.rag_orchestrator:
+                        rag_req = RAGInternalRequest(
+                            query=english_query,
+                            raw_customer_query=message,
+                            preferred_language=target_lang or source_lang or "en",
+                            session_token=auth_context.session_token if auth_context else str(session_id),
+                            user_id_or_email=auth_context.user_id_or_email if auth_context else str(customer_id),
+                            jwt_claims=auth_context.jwt_claims if auth_context else {},
+                            effective_as_of_date=effective_as_of_date,
+                            product_line=product_line,
+                            document_code=document_code,
+                            tone_directive=tone_directive,
+                            sentiment_class=sentiment_class,
+                            conversation_history=conversation_history,
+                            correlation_id=corr_id,
+                        )
+                        rag_result = await self.rag_orchestrator.process_query(request=rag_req, session=session)
+
+                    reply_text = (
+                        getattr(rag_result, "answer", getattr(rag_result, "generated_response", None))
+                        if rag_result
+                        else f"Response to: {english_query}"
+                    )
+                    citations = rag_result.citations if rag_result else []
+                confidence = rag_result.confidence_score if rag_result else 1.0
+                is_resolved = rag_result.is_resolved if rag_result else True
+                refusal_triggered = rag_result.refusal_triggered if rag_result else False
+                refusal_reason = rag_result.refusal_reason if rag_result else None
+                claims_res = (
+                    {
+                        "total_claims": rag_result.claim_verification.total_claims,
+                        "verified_claims": rag_result.claim_verification.verified_claims,
+                        "all_claims_verified": rag_result.claim_verification.all_claims_verified,
+                    }
+                    if rag_result
+                    else {"total_claims": 0, "verified_claims": 0, "all_claims_verified": True}
+                )
+
+                # Step 10: Outbound Response Translation & Entity Re-attachment
+                final_reply_text = reply_text
+                if target_lang and target_lang != "en" and not refusal_triggered:
+                    # Shield citations
+                    shielded_reply = vault.mask_citations(reply_text)
+                    try:
+                        out_trans: TranslationResult = await self.translator.translate_outbound(
+                            text=shielded_reply,
+                            target_language=target_lang,
+                        )
+                        unmasked_reply = vault.unmask_citations(out_trans.translated_text)
+                        # 4-point structural parity check
+                        if not self.evaluate_citation_parity(citations, unmasked_reply):
+                            logger.warning("Citation structural parity check failed for target lang %s", target_lang)
+                            final_reply_text = LOCALIZED_SERVICE_NOTICES.get(target_lang, LOCALIZED_SERVICE_NOTICES["en"])
+                            technical_error = True
+                            technical_error_code = "TRANSLATION_UNAVAILABLE"
+                        else:
+                            final_reply_text = unmasked_reply
+                            technical_error = False
+                            technical_error_code = None
+                    except Exception as exc:
+                        logger.error("Outbound translation failed: %s", exc)
                         final_reply_text = LOCALIZED_SERVICE_NOTICES.get(target_lang, LOCALIZED_SERVICE_NOTICES["en"])
                         technical_error = True
                         technical_error_code = "TRANSLATION_UNAVAILABLE"
-                    else:
-                        final_reply_text = unmasked_reply
-                        technical_error = False
-                        technical_error_code = None
-                except Exception as exc:
-                    logger.error("Outbound translation failed: %s", exc)
-                    final_reply_text = LOCALIZED_SERVICE_NOTICES.get(target_lang, LOCALIZED_SERVICE_NOTICES["en"])
-                    technical_error = True
-                    technical_error_code = "TRANSLATION_UNAVAILABLE"
-            else:
-                technical_error = False
-                technical_error_code = None
+                else:
+                    technical_error = False
+                    technical_error_code = None
 
             # Step 11: Transaction 2 — Atomic Multi-Entity Finalization & Outbox Staging
             if lease_lost_event.is_set():
@@ -711,7 +1044,7 @@ class MultilingualOrchestrator:
                 content=masked_content,
                 encrypted_raw_content=raw_encrypted,
                 detected_language=source_lang or "en",
-                language_confidence=det_res.confidence,
+                language_confidence=det_conf,
                 turn_sequence_number=allocated_turn_seq,
                 created_at=datetime.now(timezone.utc),
             )
@@ -735,8 +1068,7 @@ class MultilingualOrchestrator:
                 await r_agent
             await session.flush()
 
-            # Automatic Sentiment Analysis & Escalation Evaluation (Day 08 integration)
-            sentiment_eval = self.sentiment_analyzer.analyze_text(message)
+            # Persist Pre-Generation Sentiment Evaluation & Trigger Escalation If Required
             sentiment_log = SentimentLog(
                 message_id=cust_msg.id,
                 sentiment_class=sentiment_eval.sentiment_class,
@@ -757,6 +1089,7 @@ class MultilingualOrchestrator:
                 conversation_id=active_conv_id,
                 message=cust_msg,
                 sentiment_result=sentiment_eval,
+                tenant_id=(auth_context.jwt_claims or {}).get("tenant_id") if auth_context and auth_context.jwt_claims else None,
             )
 
             # Stage outbox event with deterministic UUIDv5
@@ -813,7 +1146,7 @@ class MultilingualOrchestrator:
                 "technical_error": technical_error,
                 "technical_error_code": technical_error_code,
                 "detected_language": source_lang or "en",
-                "detected_language_confidence": det_res.confidence,
+                "detected_language_confidence": det_conf,
                 "primary_language": target_lang or "en",
                 "context_restored": context_restored,
                 "turn_sequence_number": allocated_turn_seq,
@@ -824,10 +1157,14 @@ class MultilingualOrchestrator:
                 "effective_as_of_date_applied": str(effective_as_of_date or date.today()),
                 "suggested_ticket_category": getattr(rag_result, "suggested_ticket_category", None) if rag_result else None,
                 "claim_verification": claims_res,
-                "model_used": getattr(rag_result, "model_used", "gemini-3.8-flash") if rag_result else "rag",
+                "model_used": model_used_override or (getattr(rag_result, "model_used", "gemini-3.8-flash") if rag_result else "rag"),
                 "retrieval_latency_ms": getattr(rag_result, "retrieval_latency_ms", 0.0) if rag_result else 0.0,
                 "generation_latency_ms": getattr(rag_result, "generation_latency_ms", 0.0) if rag_result else 0.0,
                 "total_latency_ms": total_latency,
+                "active_slots": {k: v.current_value for k, v in active_slots.items()},
+                "customer_correction_detected": correction_signal.has_correction if correction_signal else False,
+                "detected_sentiment": sentiment_class,
+                "tone_directive_applied": bool(tone_directive),
                 "is_escalated": esc_decision.should_escalate or esc_decision.already_escalated,
                 "escalation_reason": esc_decision.trigger_condition or esc_decision.reason,
                 "escalation_decision": {
@@ -883,9 +1220,23 @@ class MultilingualOrchestrator:
             # Commit Tx2: Evaluates tg_enforce_turn_pair_completeness constraint trigger
             await session.commit()
 
-            # Step 12: Outbox Worker Delivery to Redis
+            # Step 12: Outbox Worker Delivery & Lifecycle Hot Buffer Update
             if self.outbox_worker and self.outbox_worker.redis:
                 asyncio.create_task(self.outbox_worker.deliver_single_event(session, outbox_event))
+            if self.lifecycle_manager and hasattr(self.lifecycle_manager, "append_message_turn"):
+                try:
+                    cid_str = str(customer_id) if customer_id else None
+                    # Bound Redis hot-cache sync tightly so optional offline Redis never stalls chat turns
+                    await asyncio.wait_for(
+                        self.lifecycle_manager.append_message_turn(session_id, cid_str, "CUSTOMER", masked_content),
+                        timeout=0.25,
+                    )
+                    await asyncio.wait_for(
+                        self.lifecycle_manager.append_message_turn(session_id, cid_str, "AI_AGENT", final_reply_text),
+                        timeout=0.25,
+                    )
+                except Exception:
+                    pass
 
             return response_data
 

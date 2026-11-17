@@ -53,6 +53,8 @@ def test_alembic_offline_sql_generation():
         "evidence_files",
         "extracted_evidence_entities",
         "evidence_verifications",
+        "storage_objects",
+        "kb_document_ingestion_jobs",
     ]
 
     for table in expected_tables:

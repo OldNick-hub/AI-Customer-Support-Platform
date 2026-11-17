@@ -10,10 +10,11 @@ Implements:
 7. Outbox retention pruning (7-day DELIVERED only, preserving PENDING/DEAD_LETTER).
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import uuid
 
 import redis.asyncio as aioredis
@@ -213,6 +214,11 @@ class OutboxWorker:
         self.redis = redis_client
         self.ttl_seconds = ttl_seconds
         self.max_attempts = max_attempts
+        self._stop_event = asyncio.Event()
+        self._task: Optional[asyncio.Task] = None
+        self.is_running: bool = False
+        self.scan_count: int = 0
+        self.last_scan_at: Optional[datetime] = None
 
     def _get_redis_keys(self, conversation_id: Union[uuid.UUID, str]) -> List[str]:
         cid = str(conversation_id)
@@ -380,8 +386,12 @@ class OutboxWorker:
             )
             .order_by(ChatOutboxEvent.created_at.asc())
             .limit(batch_size)
-            .with_for_update(skip_locked=True)
         )
+        bind = session.bind
+        dialect_name = bind.dialect.name if bind else "postgresql"
+        if dialect_name == "postgresql":
+            stmt = stmt.with_for_update(skip_locked=True)
+
         result = await session.execute(stmt)
         events = result.scalars().all()
 
@@ -393,6 +403,62 @@ class OutboxWorker:
 
         await session.commit()
         return results
+
+    def start_periodic_scanner(
+        self,
+        session_factory: Callable[[], AsyncSession],
+        poll_interval_seconds: float = 10.0,
+        batch_size: int = 20,
+    ) -> None:
+        """Starts background task processing pending outbox events periodically."""
+        if self._task and not self._task.done():
+            return
+        self._stop_event.clear()
+        self.is_running = True
+        self._task = asyncio.create_task(
+            self._periodic_loop(
+                session_factory=session_factory,
+                poll_interval_seconds=poll_interval_seconds,
+                batch_size=batch_size,
+            )
+        )
+
+    async def stop_periodic_scanner(self) -> None:
+        """Gracefully halts the periodic outbox background processing task."""
+        self._stop_event.set()
+        self.is_running = False
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._task = None
+
+    async def _periodic_loop(
+        self,
+        session_factory: Callable[[], AsyncSession],
+        poll_interval_seconds: float,
+        batch_size: int,
+    ) -> None:
+        """Continuous background execution loop for outbox event delivery."""
+        while not self._stop_event.is_set():
+            try:
+                async with session_factory() as session:
+                    await self.claim_and_process_pending_events(session, batch_size=batch_size)
+                    self.scan_count += 1
+                    self.last_scan_at = datetime.now(timezone.utc)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.error("OutboxWorker background scanner error: %s", exc)
+
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=poll_interval_seconds)
+            except asyncio.TimeoutError:
+                pass
+            except asyncio.CancelledError:
+                break
 
     async def redrive_dead_letters(self, session: AsyncSession, limit: int = 50) -> int:
         """Resets DEAD_LETTER events to PENDING with next_retry_at = NOW()."""

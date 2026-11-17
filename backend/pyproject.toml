@@ -2,6 +2,9 @@
 requires = ["setuptools>=68.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [project]
 name = "customer-support-ai-platform"
 version = "0.1.0"
@@ -26,7 +29,6 @@ dependencies = [
 
     # Caching & Distributed Task Queue
     "redis>=5.0.8",
-    "celery[redis]>=5.4.0",
 
     # Vector Storage & Search
     "faiss-cpu>=1.8.0",
@@ -47,10 +49,11 @@ dependencies = [
     "python-magic>=0.4.27; sys_platform != 'win32'",
 
     # Security & Cryptography
-    "python-jose[cryptography]>=3.3.0",
+    "pyjwt[crypto]>=2.8.0",
     "cryptography>=43.0.0",
     "pwdlib[bcrypt]>=0.2.0",
     "bcrypt>=4.1.3",
+    "httpx>=0.27.0",
     "tzdata>=2026.1; sys_platform == 'win32'",
 ]
 

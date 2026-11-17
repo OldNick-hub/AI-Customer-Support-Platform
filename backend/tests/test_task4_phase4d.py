@@ -98,6 +98,22 @@ def create_staff_jwt(
     return jwt.encode(payload, key, algorithm=alg)
 
 
+def _make_active_customer_session_mock() -> MagicMock:
+    """Builds a valid active CustomerSession mock with UUID identifiers."""
+    customer_id = uuid.uuid4()
+    mock_customer = MagicMock(spec=Customer)
+    mock_customer.id = customer_id
+    mock_customer.customer_tier = "STANDARD"
+
+    mock_sess = MagicMock(spec=CustomerSession)
+    mock_sess.id = uuid.uuid4()
+    mock_sess.customer_id = customer_id
+    mock_sess.status = "ACTIVE"
+    mock_sess.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    mock_sess.customer = mock_customer
+    return mock_sess
+
+
 def make_resolution_result(
     is_resolved: bool = True,
     refusal_triggered: bool = False,
@@ -404,7 +420,7 @@ async def test_auth_inactive_staff_user_fails_closed_401():
 async def test_auth_valid_staff_jwt_resolves_and_answers_200():
     """Verifies that a valid staff JWT resolves agent identity and returns 200 OK."""
     user_id = str(uuid.uuid4())
-    token = create_staff_jwt(sub=user_id)
+    token = create_staff_jwt(sub=user_id, extra_claims={"tenant_id": "default"})
 
     mock_role = MagicMock(spec=Role)
     mock_role.name = "AGENT"
@@ -417,9 +433,11 @@ async def test_auth_valid_staff_jwt_resolves_and_answers_200():
     mock_user.skills = []
     mock_user.roles = [mock_role]
 
+    mock_staff_sess = _make_active_customer_session_mock()
     mock_db = AsyncMock()
     mock_db_res = MagicMock()
     mock_db_res.scalar_one_or_none.return_value = mock_user
+    mock_db_res.scalars.return_value.first.return_value = mock_staff_sess
     mock_db.execute.return_value = mock_db_res
 
     mock_orch = MagicMock(spec=RAGOrchestrator)
@@ -453,7 +471,7 @@ async def test_auth_valid_staff_jwt_resolves_and_answers_200():
 async def test_auth_unauthorized_access_triggers_403_forbidden():
     """Verifies that an authenticated caller denied access by the orchestrator triggers 403 Forbidden."""
     user_id = str(uuid.uuid4())
-    token = create_staff_jwt(sub=user_id)
+    token = create_staff_jwt(sub=user_id, extra_claims={"tenant_id": "default"})
 
     mock_user = MagicMock(spec=User)
     mock_user.id = uuid.UUID(user_id)
@@ -462,9 +480,11 @@ async def test_auth_unauthorized_access_triggers_403_forbidden():
     mock_user.skills = []
     mock_user.roles = []
 
+    mock_staff_sess = _make_active_customer_session_mock()
     mock_db = AsyncMock()
     mock_db_res = MagicMock()
     mock_db_res.scalar_one_or_none.return_value = mock_user
+    mock_db_res.scalars.return_value.first.return_value = mock_staff_sess
     mock_db.execute.return_value = mock_db_res
 
     mock_orch = MagicMock(spec=RAGOrchestrator)
@@ -590,10 +610,7 @@ async def test_oversized_message_rejected_422():
 @pytest.mark.asyncio
 async def test_query_alias_compatibility_200():
     """Verifies that the endpoint supports 'query' as a valid alias for 'message'."""
-    mock_sess = MagicMock(spec=CustomerSession)
-    mock_sess.status = "ACTIVE"
-    mock_sess.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-    mock_sess.customer = MagicMock(spec=Customer)
+    mock_sess = _make_active_customer_session_mock()
 
     mock_db = AsyncMock()
     mock_res = MagicMock()
@@ -629,10 +646,7 @@ async def test_query_alias_compatibility_200():
 @pytest.mark.asyncio
 async def test_temporal_historical_policy_date_propagated():
     """Verifies that 'effective_as_of_date' is parsed and propagated directly to the RAG orchestrator."""
-    mock_sess = MagicMock(spec=CustomerSession)
-    mock_sess.status = "ACTIVE"
-    mock_sess.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-    mock_sess.customer = MagicMock(spec=Customer)
+    mock_sess = _make_active_customer_session_mock()
 
     mock_db = AsyncMock()
     mock_res = MagicMock()
@@ -667,10 +681,7 @@ async def test_temporal_historical_policy_date_propagated():
 @pytest.mark.asyncio
 async def test_product_line_and_document_code_filters_propagated():
     """Verifies that product line and document code filters are propagated to the orchestrator."""
-    mock_sess = MagicMock(spec=CustomerSession)
-    mock_sess.status = "ACTIVE"
-    mock_sess.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-    mock_sess.customer = MagicMock(spec=Customer)
+    mock_sess = _make_active_customer_session_mock()
 
     mock_db = AsyncMock()
     mock_res = MagicMock()
@@ -707,10 +718,7 @@ async def test_product_line_and_document_code_filters_propagated():
 @pytest.mark.asyncio
 async def test_domain_policy_conflict_returns_200_with_escalation_refusal():
     """Verifies that a policy conflict returns 200 OK with refusal_triggered=True and escalation category."""
-    mock_sess = MagicMock(spec=CustomerSession)
-    mock_sess.status = "ACTIVE"
-    mock_sess.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-    mock_sess.customer = MagicMock(spec=Customer)
+    mock_sess = _make_active_customer_session_mock()
 
     mock_db = AsyncMock()
     mock_res = MagicMock()
@@ -754,10 +762,7 @@ async def test_domain_policy_conflict_returns_200_with_escalation_refusal():
 @pytest.mark.asyncio
 async def test_prompt_injection_returns_200_with_security_refusal():
     """Verifies that an adversarial injection attempt returns 200 OK with refusal_reason SECURITY_INJECTION_DETECTED."""
-    mock_sess = MagicMock(spec=CustomerSession)
-    mock_sess.status = "ACTIVE"
-    mock_sess.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-    mock_sess.customer = MagicMock(spec=Customer)
+    mock_sess = _make_active_customer_session_mock()
 
     mock_db = AsyncMock()
     mock_res = MagicMock()
@@ -800,10 +805,7 @@ async def test_correlation_id_propagated_and_echoed_in_header():
     """Verifies that a caller-provided X-Request-ID header is propagated and echoed back in the response."""
     test_req_id = "trace-custom-uuid-998877"
 
-    mock_sess = MagicMock(spec=CustomerSession)
-    mock_sess.status = "ACTIVE"
-    mock_sess.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-    mock_sess.customer = MagicMock(spec=Customer)
+    mock_sess = _make_active_customer_session_mock()
 
     mock_db = AsyncMock()
     mock_res = MagicMock()
@@ -840,10 +842,7 @@ async def test_correlation_id_propagated_and_echoed_in_header():
 @pytest.mark.asyncio
 async def test_orchestrator_unhandled_exception_shielded_500():
     """Verifies that unexpected unhandled errors in the orchestrator return an RFC 7807 500 without leaking credentials."""
-    mock_sess = MagicMock(spec=CustomerSession)
-    mock_sess.status = "ACTIVE"
-    mock_sess.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-    mock_sess.customer = MagicMock(spec=Customer)
+    mock_sess = _make_active_customer_session_mock()
 
     mock_db = AsyncMock()
     mock_res = MagicMock()

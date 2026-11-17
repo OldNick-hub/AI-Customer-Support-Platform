@@ -109,6 +109,25 @@ class Ticket(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Synthesis pipeline status (orthogonal to ticket operational status)
+    synthesis_status: Mapped[str] = mapped_column(
+        String(50), default="DRAFT", nullable=False, index=True
+    )  # 'DRAFT', 'SYNTHESIZING', 'SYNTHESIZED', 'NEEDS_INFORMATION', 'READY_FOR_REVIEW', 'COMPLETE'
+
+    # Intelligent routing and priority tracking
+    assigned_team: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True, index=True
+    )  # Department team: 'Billing', 'Logistics', 'Technical', 'Account', 'Support'
+    priority_explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    routing_status: Mapped[str] = mapped_column(
+        String(50), default="UNASSIGNED", nullable=False, index=True
+    )  # 'UNASSIGNED', 'ASSIGNED', 'TEAM_QUEUED', 'MANUALLY_ASSIGNED'
+
+    # Intelligent resolution status
+    resolution_status: Mapped[str] = mapped_column(
+        String(50), default="UNRESOLVED", nullable=False, index=True
+    )  # 'UNRESOLVED', 'EVALUATED', 'IN_PROGRESS', 'AWAITING_APPROVAL', 'RESOLVED', 'ESCALATED', 'FAILED'
+
     customer: Mapped["Customer"] = relationship("Customer", back_populates="tickets")  # type: ignore[name-defined]
     conversation: Mapped[Optional["Conversation"]] = relationship(  # type: ignore[name-defined]
         "Conversation", back_populates="tickets"
@@ -124,7 +143,19 @@ class Ticket(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         "TicketEvent", back_populates="ticket", cascade="all, delete-orphan"
     )
     evidence_files: Mapped[List["EvidenceFile"]] = relationship(  # type: ignore[name-defined]
-        "EvidenceFile", back_populates="ticket"
+        "EvidenceFile", back_populates="ticket", lazy="selectin"
+    )
+    ticket_synthesis: Mapped[Optional["TicketSynthesis"]] = relationship(  # type: ignore[name-defined]
+        "TicketSynthesis", back_populates="ticket", uselist=False, cascade="all, delete-orphan"
+    )
+    clarification_requests: Mapped[List["TicketClarificationRequest"]] = relationship(  # type: ignore[name-defined]
+        "TicketClarificationRequest", back_populates="ticket", cascade="all, delete-orphan"
+    )
+    ticket_resolution: Mapped[Optional["TicketResolution"]] = relationship(  # type: ignore[name-defined]
+        "TicketResolution", back_populates="ticket", uselist=False, cascade="all, delete-orphan", lazy="selectin"
+    )
+    resolution_actions: Mapped[List["ResolutionAction"]] = relationship(  # type: ignore[name-defined]
+        "ResolutionAction", back_populates="ticket", cascade="all, delete-orphan", lazy="selectin"
     )
 
     __table_args__ = (

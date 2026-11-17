@@ -123,6 +123,7 @@ class StructureAwareChunker:
         product_line: str = "GLOBAL",
         region: str = "GLOBAL",
         access_level: str = "PUBLIC",
+        tenant_id: str = "default",
     ) -> List[ExtractedChunk]:
         """Chunks a document into sentence-aligned pieces preserving hierarchical structure."""
         if text is None or not isinstance(text, str) or not text.strip():
@@ -172,6 +173,7 @@ class StructureAwareChunker:
             token_count = self._estimate_token_count(full_chunk_text)
 
             meta = {
+                "tenant_id": tenant_id,
                 "document_id": str(document_id),
                 "version_id": str(version_id),
                 "document_code": document_code,

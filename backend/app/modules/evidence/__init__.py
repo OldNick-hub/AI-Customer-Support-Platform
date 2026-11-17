@@ -43,15 +43,28 @@ from app.modules.evidence.schemas import (
     ClarificationResponseRequest,
     EvidenceDetailResponse,
     EvidenceExtractionResponse,
+    EvidenceListItem,
+    EvidenceListResponse,
     EvidenceStatusResponse,
     EvidenceUploadResponse,
+    FinancialVerificationLevel,
     ReconciliationJobStatusResponse,
     ReconciliationRequest,
     ReconciliationResponse,
+    ReceiptLineItem,
     StructuredInvoiceData,
+    TransactionIdentifierType,
 )
 from app.modules.evidence.service import EvidenceAuthorizationError, EvidenceService
 from app.modules.evidence.storage import EvidenceStorageManager, default_evidence_storage
+from app.modules.evidence.security_guard import (
+    AdversarialEvidenceGuard,
+    EvidenceSecurityOutcome,
+    SecurityFinding,
+    SecurityScanResult,
+    default_adversarial_guard,
+)
+from app.modules.evidence.lifecycle_manager import StorageLifecycleManager, EvidenceRetentionWorker
 from app.modules.evidence.validator import (
     EmptyFileError,
     EvidenceValidationError,
@@ -81,6 +94,8 @@ __all__ = [
     "EvidenceProcessingPipeline",
     "EvidenceUploadResponse",
     "EvidenceDetailResponse",
+    "EvidenceListItem",
+    "EvidenceListResponse",
     "EvidenceStatusResponse",
     "EvidenceExtractionResponse",
     "StructuredInvoiceData",
@@ -107,4 +122,12 @@ __all__ = [
     "ReconciliationNotFoundException",
     "ReconciliationAuthorizationError",
     "ReconciliationWorker",
+    "ReceiptLineItem",
+    "AdversarialEvidenceGuard",
+    "EvidenceSecurityOutcome",
+    "SecurityFinding",
+    "SecurityScanResult",
+    "default_adversarial_guard",
+    "StorageLifecycleManager",
+    "EvidenceRetentionWorker",
 ]

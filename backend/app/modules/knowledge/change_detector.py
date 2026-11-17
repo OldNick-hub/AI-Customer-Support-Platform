@@ -563,6 +563,7 @@ class ChangeDetector:
                         target_version_number=1,
                         sanitized_text=san_res.sanitized_text,
                         metadata_={
+                            "tenant_id": getattr(san_res, "tenant_id", "default") or "default",
                             "title": san_res.title,
                             "category": san_res.category,
                             "product_line": san_res.product_line,
@@ -573,6 +574,7 @@ class ChangeDetector:
 
                     if persist_staged_versions:
                         new_doc = Document(
+                            tenant_id=getattr(san_res, "tenant_id", "default") or "default",
                             title=san_res.title or doc_code,
                             document_code=doc_code,
                             category=san_res.category or "POLICY",

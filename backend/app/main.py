@@ -9,6 +9,7 @@ Configures:
 6. Basic liveness and readiness health probes.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 import logging
 from typing import AsyncGenerator
@@ -18,6 +19,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1 import api_v1_router
@@ -28,6 +30,11 @@ from app.db.session import AsyncSessionLocal
 from app.modules.knowledge.reader import ActiveIndexReader
 from app.modules.ticketing.worker import EscalationWorker
 from app.modules.evidence.worker import ReconciliationWorker
+from app.modules.evidence.lifecycle_manager import (
+    EvidenceRetentionWorker,
+    StorageLifecycleManager,
+)
+from app.services.redis_service import get_redis_service
 
 logger = configure_safe_logger(logging.getLogger(__name__))
 
@@ -43,6 +50,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     4. Gracefully terminates and awaits background tasks on application shutdown.
     """
     logger.info("Initializing FastAPI application lifespan...")
+
+    # Fast-fail configuration safeguards
+    if hasattr(settings, "validate_embedding_configuration"):
+        settings.validate_embedding_configuration()
+    if hasattr(settings, "validate_production_configuration"):
+        settings.validate_production_configuration()
+
     reader = ActiveIndexReader(settings=settings)
     try:
         async with AsyncSessionLocal() as session:
@@ -50,47 +64,83 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as exc:
         logger.debug("Reader startup sync skipped or encountered non-fatal error: %s", exc)
 
-    # Initialize EscalationWorker for production runtime
+    # Initialize EscalationWorker
     escalation_worker = EscalationWorker(
         session_factory=AsyncSessionLocal,
         poll_interval_seconds=float(getattr(settings, "ESCALATION_POLL_INTERVAL_SECONDS", 30.0)),
     )
-    try:
-        async with AsyncSessionLocal() as session:
-            await escalation_worker.scan_and_escalate_batch(session)
-    except Exception as exc:
-        logger.debug("EscalationWorker startup recovery scan skipped or non-fatal error: %s", exc)
-
-    escalation_worker.start_periodic_scanner()
     app.state.escalation_worker = escalation_worker
 
-    # Initialize ReconciliationWorker for production runtime (Day 10)
+    # Initialize ReconciliationWorker
     reconciliation_worker = ReconciliationWorker(
         session_factory=AsyncSessionLocal,
         poll_interval_seconds=float(getattr(settings, "RECONCILIATION_POLL_INTERVAL_SECONDS", 10.0)),
         stale_timeout_seconds=float(getattr(settings, "RECONCILIATION_STALE_TIMEOUT_SECONDS", 300.0)),
     )
-    try:
-        async with AsyncSessionLocal() as session:
-            await reconciliation_worker.recover_stale_jobs(session)
-            await reconciliation_worker.scan_and_process_batch(session)
-    except Exception as exc:
-        logger.debug("ReconciliationWorker startup recovery scan skipped or non-fatal error: %s", exc)
-
-    reconciliation_worker.start_periodic_scanner()
     app.state.reconciliation_worker = reconciliation_worker
+
+    # Initialize EvidenceRetentionWorker
+    storage_lifecycle_manager = StorageLifecycleManager(
+        max_batch_size=int(getattr(settings, "EVIDENCE_RETENTION_BATCH_SIZE", 50)),
+        max_retries=int(getattr(settings, "EVIDENCE_RETENTION_MAX_RETRIES", 3)),
+    )
+    retention_worker = EvidenceRetentionWorker(
+        session_factory=AsyncSessionLocal,
+        lifecycle_manager=storage_lifecycle_manager,
+        scan_interval_seconds=float(getattr(settings, "EVIDENCE_RETENTION_SCAN_INTERVAL_SECONDS", 3600.0)),
+        batch_size=int(getattr(settings, "EVIDENCE_RETENTION_BATCH_SIZE", 50)),
+    )
+    app.state.retention_worker = retention_worker
+
+    enable_workers = getattr(settings, "ENABLE_BACKGROUND_WORKERS", True)
+    if enable_workers:
+        # Run startup recovery scans and sweeps
+        try:
+            async with AsyncSessionLocal() as session:
+                await escalation_worker.scan_and_escalate_batch(session)
+        except Exception as exc:
+            logger.debug("EscalationWorker startup recovery scan skipped or non-fatal error: %s", exc)
+
+        try:
+            async with AsyncSessionLocal() as session:
+                await reconciliation_worker.recover_stale_jobs(session)
+                await reconciliation_worker.scan_and_process_batch(session)
+        except Exception as exc:
+            logger.debug("ReconciliationWorker startup recovery scan skipped or non-fatal error: %s", exc)
+
+        try:
+            async with AsyncSessionLocal() as session:
+                await storage_lifecycle_manager.execute_purge_batch(session)
+        except Exception as exc:
+            logger.debug("EvidenceRetentionWorker startup sweep skipped or non-fatal error: %s", exc)
+
+        escalation_worker.start_periodic_scanner()
+        reconciliation_worker.start_periodic_scanner()
+        retention_worker.start_periodic_scanner()
+        logger.info("Background workers successfully started in FastAPI lifespan.")
+    else:
+        logger.info("API mode active: Background worker loops and recovery disabled (ENABLE_BACKGROUND_WORKERS=False).")
 
     yield
 
     logger.info("Shutting down FastAPI application lifespan...")
-    try:
-        await reconciliation_worker.stop_async()
-    except Exception as exc:
-        logger.warning("Error stopping ReconciliationWorker on shutdown: %s", exc)
-    try:
-        await escalation_worker.stop_async()
-    except Exception as exc:
-        logger.warning("Error stopping EscalationWorker on shutdown: %s", exc)
+    if enable_workers:
+        try:
+            ret_worker = getattr(app.state, "retention_worker", None)
+            if ret_worker:
+                await ret_worker.stop_async()
+        except Exception as exc:
+            logger.warning("Error stopping EvidenceRetentionWorker on shutdown: %s", exc)
+        try:
+            if reconciliation_worker:
+                await reconciliation_worker.stop_async()
+        except Exception as exc:
+            logger.warning("Error stopping ReconciliationWorker on shutdown: %s", exc)
+        try:
+            if escalation_worker:
+                await escalation_worker.stop_async()
+        except Exception as exc:
+            logger.warning("Error stopping EscalationWorker on shutdown: %s", exc)
     reader.stop()
 
 
@@ -221,4 +271,66 @@ async def health_live():
 
 @app.get("/api/v1/health/ready", tags=["Health"], summary="Readiness Probe")
 async def health_ready():
-    return {"status": "ready"}
+    """Dependency-aware readiness health probe.
+
+    Verifies live connectivity to PostgreSQL (SELECT 1) and Redis (PING if required or configured)
+    with a strict ~1.0-second timeout per dependency check.
+    Returns HTTP 200 when ready, HTTP 503 if any required dependency fails or times out.
+    """
+    db_healthy = False
+    db_status = "unhealthy"
+    for attempt in range(2):
+        try:
+            async with AsyncSessionLocal() as session:
+                await asyncio.wait_for(session.execute(text("SELECT 1")), timeout=1.0)
+            db_healthy = True
+            db_status = "healthy"
+            break
+        except asyncio.TimeoutError:
+            logger.warning("Readiness probe: database check timed out (>1.0s).")
+            db_status = "timeout"
+            break
+        except Exception as exc:
+            if "another operation is in progress" in str(exc) and attempt == 0:
+                await asyncio.sleep(0.05)
+                continue
+            logger.warning("Readiness probe: database connection failed: %s", exc)
+            db_status = "unhealthy"
+            break
+
+    redis_required = getattr(settings, "REDIS_REQUIRED", False) or settings.ENVIRONMENT in ("staging", "production")
+    redis_healthy = False
+    redis_status = "unhealthy"
+    try:
+        redis_svc = get_redis_service()
+        await asyncio.wait_for(redis_svc.ping(), timeout=1.0)
+        redis_healthy = True
+        redis_status = "healthy"
+    except asyncio.TimeoutError:
+        logger.warning("Readiness probe: Redis ping timed out (>1.0s).")
+        redis_status = "timeout"
+        redis_healthy = not redis_required
+    except Exception as exc:
+        logger.debug("Readiness probe: Redis check encountered: %s", exc)
+        redis_status = "unhealthy" if redis_required else "unavailable (optional)"
+        redis_healthy = not redis_required
+
+    all_healthy = db_healthy and redis_healthy
+    if not all_healthy:
+        payload = {
+            "status": "unhealthy",
+            "error": "One or more required dependencies are unavailable.",
+            "checks": {
+                "database": db_status,
+                "redis": redis_status,
+            },
+        }
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=payload,
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={"status": "ready"},
+    )

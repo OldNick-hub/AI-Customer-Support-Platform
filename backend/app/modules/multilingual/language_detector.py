@@ -75,6 +75,7 @@ class LanguageDetector:
             "hai", "hain", "ho", "karo", "kar", "diya", "de", "do", "bhai", "kitna", "kitni",
             "kitne", "kab", "kripya", "kaise", "batao", "bhejo", "aur", "pe", "mein", "ko",
             "se", "tak", "aayega", "aayegi", "milega", "paisa", "rupaye", "wapas",
+            "namaste", "namaskar", "dhanyawad", "dhanyavaad", "shukriya", "theek", "alvida",
         },
         "es": {
             "el", "la", "de", "que", "y", "en", "un", "una", "por", "para", "con", "no", "es",
@@ -82,6 +83,7 @@ class LanguageDetector:
             "pedido", "reembolso", "devolucion", "devolución", "devolver", "cuenta", "envio", "envío",
             "cuando", "cuándo", "donde", "dónde", "gracias", "cancelar", "comprar", "ayuda", "articulo",
             "artículo", "garantia", "garantía", "producto", "politica", "política", "informacion", "información",
+            "buenos", "buenas", "dias", "días", "tardes", "noches", "adios", "adiós", "hasta", "luego", "vale",
         },
         "fr": {
             "le", "la", "les", "de", "des", "un", "une", "et", "est", "en", "que", "qui", "dans",
@@ -89,6 +91,7 @@ class LanguageDetector:
             "bonjour", "commande", "remboursement", "livraison", "retour", "retours", "aide",
             "quand", "comment", "ou", "où", "garantie", "produit", "s'il", "vous", "plaît", "plait",
             "politique", "reponse", "réponse", "delai", "délai", "probleme", "problème",
+            "salut", "bonsoir", "revoir", "bienvenue",
         },
         "de": {
             "das", "ist", "du", "ich", "nicht", "die", "es", "und", "der", "was", "wir", "sie",
@@ -96,7 +99,7 @@ class LanguageDetector:
             "von", "haben", "bitte", "bestellung", "rueckerstattung", "rückerstattung", "versand",
             "zurueck", "zurück", "wann", "wo", "hilfe", "artikel", "produkt", "garantie", "stornieren",
             "danke", "guten", "tag", "hallo", "kuendigung", "kündigung", "lieferung", "ruecksendung",
-            "rücksendung",
+            "rücksendung", "morgen", "abend", "tschüss", "tschuess", "servus", "moin",
         },
         "en": {
             "the", "and", "that", "have", "for", "not", "with", "you", "this", "but", "his", "from",
@@ -107,7 +110,9 @@ class LanguageDetector:
             "over", "think", "also", "back", "after", "use", "two", "how", "our", "work", "first",
             "well", "way", "even", "new", "want", "because", "any", "these", "give", "day", "most",
             "us", "order", "return", "refund", "shipping", "delivery", "policy", "warranty", "help",
-            "item", "product", "cancel", "please", "hello", "hi", "thanks", "track",
+            "item", "product", "cancel", "please", "hello", "hi", "hey", "thanks", "thank", "track",
+            "morning", "afternoon", "evening", "greetings", "bye", "goodbye", "sure",
+            "there", "doing", "fine", "great", "awesome", "okay", "alright", "welcome", "see", "care",
             "is", "are", "was", "were", "am", "be", "been", "being", "do", "does", "did", "done",
             "has", "had", "having", "so", "up", "down", "in", "on", "at", "to", "by", "if", "or",
             "as", "an", "it", "my", "test", "check", "query", "turn", "race", "count",

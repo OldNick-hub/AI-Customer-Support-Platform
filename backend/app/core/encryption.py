@@ -81,6 +81,46 @@ class ApplicationLayerEncryption:
         decrypted_bytes = self._aesgcm.decrypt(nonce, ciphertext_and_tag, associated_data)
         return decrypted_bytes.decode("utf-8")
 
+    def encrypt_bytes(self, data: bytes, associated_data: bytes = b"") -> bytes:
+        """Encrypts arbitrary raw binary payload with AES-256-GCM.
+
+        Args:
+            data: Raw binary bytes to encrypt.
+            associated_data: Authenticated associated data bound to ciphertext.
+
+        Returns:
+            Concatenated bytes: nonce (12 bytes) + ciphertext + tag.
+        """
+        if not isinstance(data, (bytes, bytearray)):
+            raise TypeError(f"Data must be bytes or bytearray, got {type(data)}")
+        nonce = os.urandom(self.NONCE_LENGTH_BYTES)
+        ciphertext = self._aesgcm.encrypt(nonce, bytes(data), associated_data)
+        return nonce + ciphertext
+
+    def decrypt_bytes(self, encrypted_bytes: bytes, associated_data: bytes = b"") -> bytes:
+        """Decrypts and authenticates raw binary ciphertext with AES-256-GCM.
+
+        Args:
+            encrypted_bytes: Concatenated nonce (12 bytes) + ciphertext + tag.
+            associated_data: Authenticated associated data bound during encryption.
+
+        Returns:
+            Decrypted plaintext bytes.
+
+        Raises:
+            ValueError: If payload length is shorter than the 12-byte nonce.
+            InvalidTag: If ciphertext/tag is corrupted or associated data does not match.
+        """
+        if not isinstance(encrypted_bytes, (bytes, bytearray)):
+            raise TypeError(f"Encrypted payload must be bytes, got {type(encrypted_bytes)}")
+        if len(encrypted_bytes) < self.NONCE_LENGTH_BYTES:
+            raise ValueError(
+                f"Encrypted payload too short. Minimum length is {self.NONCE_LENGTH_BYTES} bytes."
+            )
+        nonce = encrypted_bytes[: self.NONCE_LENGTH_BYTES]
+        ciphertext_and_tag = encrypted_bytes[self.NONCE_LENGTH_BYTES :]
+        return self._aesgcm.decrypt(nonce, ciphertext_and_tag, associated_data)
+
     def encrypt_payload(
         self,
         plaintext: Union[str, bytes],

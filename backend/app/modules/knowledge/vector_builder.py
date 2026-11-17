@@ -6,7 +6,7 @@ and verifying vector count, dimensions, ID uniqueness, and index readability bef
 """
 
 import asyncio
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 import logging
@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import faiss
 import numpy as np
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select, text
+from sqlalchemy import delete, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -33,6 +33,7 @@ from app.core.exceptions import (
 from app.core.logging import configure_safe_logger
 from app.models.document import Document, DocumentChunk, DocumentVersion
 from app.models.knowledge_index import KnowledgeIndex
+from app.modules.knowledge.change_detector import DatabaseAdvisoryLock
 from app.modules.knowledge.chunker import ExtractedChunk, StructureAwareChunker
 from app.services.embedding_service import EmbeddingService, get_embedding_service
 
@@ -172,6 +173,7 @@ class CandidateVectorBuilder:
         with open(ver.storage_uri, "r", encoding="utf-8", errors="replace") as f:
             raw_text = f.read()
 
+        tenant_id = getattr(doc, "tenant_id", "default") or "default"
         extracted_chunks: List[ExtractedChunk] = self.chunker.chunk_document(
             text=raw_text,
             document_id=doc.id,
@@ -182,6 +184,7 @@ class CandidateVectorBuilder:
             product_line=doc.product_line,
             region=doc.region,
             access_level=doc.access_level,
+            tenant_id=tenant_id,
         )
 
         persisted_chunks: List[DocumentChunk] = []
@@ -190,6 +193,7 @@ class CandidateVectorBuilder:
             fallback_counter += 1
 
             chunk_row = DocumentChunk(
+                tenant_id=tenant_id,
                 version_id=ver.id,
                 chunk_index=ec.chunk_index,
                 chunk_text=ec.chunk_text,
@@ -208,27 +212,59 @@ class CandidateVectorBuilder:
         session: AsyncSession,
         version_tag: Optional[str] = None,
         custom_target_dir: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+        job_id: Optional[uuid.UUID] = None,
+        claim_version: Optional[int] = None,
+        lease_duration_seconds: float = 300.0,
     ) -> CandidateBuildResult:
-        """Builds an isolated candidate FAISS vector index from deterministic candidate documents.
+        """Builds an isolated candidate FAISS vector index with durable ownership registration and two-phase atomic promotion.
 
         Invariants:
-        1. Builds strictly inside isolated versioned directory
-        2. Never touches or mutates active_index.json or currently active indexes
-        3. Generates 384-dimensional unit-normalized embeddings via singleton EmbeddingService
-        4. FAISS IndexIDMap2(IndexFlatIP(384)) ensures 1:1 match with document_chunks.faiss_vector_id
-        5. Validates vector count, dimensions, ID uniqueness, and index file integrity
+        1. Assigns a unique identity tied to tenant, job, and claim version.
+        2. Records durable candidate ownership in PostgreSQL (status="BUILDING", watchdog_expires_at) before writing begins.
+        3. Writes strictly inside isolated scratch directory (.building_{tag}) without holding global lock.
+        4. FAISS IndexIDMap2(IndexFlatIP(384)) ensures 1:1 match with document_chunks.faiss_vector_id.
+        5. Validates vector count, dimensions, ID uniqueness, and index file integrity in scratch directory.
+        6. Atomically publishes under promotion lock (5432002), verifying ownership and unexpired lease.
         """
         # Generate version tag if not supplied
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        tag = version_tag or f"idx_{ts}_{uuid.uuid4().hex[:6]}"
+        tag = version_tag or f"idx_{tenant_id or 'default'}_{job_id or ts}_v{claim_version or 1}_{uuid.uuid4().hex[:6]}"
 
         candidate_dir = custom_target_dir or os.path.join(self.storage_dir, f"candidate_{tag}")
-        os.makedirs(candidate_dir, exist_ok=True)
         index_file_path = os.path.join(candidate_dir, "index.faiss")
         manifest_path = os.path.join(candidate_dir, "manifest.json")
 
+        # Isolated scratch directory during build
+        scratch_dir = os.path.join(self.storage_dir, f".building_{tag}")
+        os.makedirs(scratch_dir, exist_ok=True)
+        scratch_index_file_path = os.path.join(scratch_dir, "index.faiss")
+        scratch_manifest_path = os.path.join(scratch_dir, "manifest.json")
+
+        # 1. Record durable candidate ownership in PostgreSQL before writing begins
+        now_dt = datetime.now(timezone.utc)
+        lease_expires_at = now_dt + timedelta(seconds=lease_duration_seconds)
+        stmt = select(KnowledgeIndex).where(KnowledgeIndex.index_version_tag == tag)
+        k_idx = (await session.execute(stmt)).scalar_one_or_none()
+        if not k_idx:
+            k_idx = KnowledgeIndex(
+                index_version_tag=tag,
+                storage_path=os.path.abspath(index_file_path),
+                total_vectors=0,
+                status="BUILDING",
+                watchdog_expires_at=lease_expires_at,
+                created_at=now_dt,
+            )
+            session.add(k_idx)
+        else:
+            k_idx.status = "BUILDING"
+            k_idx.storage_path = os.path.abspath(index_file_path)
+            k_idx.watchdog_expires_at = lease_expires_at
+            k_idx.total_vectors = 0
+        await session.commit()
+
         try:
-            # 1. Deterministic Candidate Document Selection
+            # 2. Deterministic Candidate Document Selection
             selected_pairs = await self.select_candidate_versions(session)
 
             # Get current maximum faiss_vector_id for SQLite sequence fallback
@@ -246,7 +282,7 @@ class CandidateVectorBuilder:
                 )
                 all_candidate_chunks.extend(chunks)
 
-            # 2. Embedding Generation
+            # 3. Embedding Generation
             total_chunks = len(all_candidate_chunks)
             if total_chunks == 0:
                 logger.warning("Zero candidate chunks available; building empty candidate index.")
@@ -277,7 +313,7 @@ class CandidateVectorBuilder:
                     if abs(norm - 1.0) > 1e-3:
                         logger.warning("Vector %d not unit-normalized (norm=%.4f); normalising.", idx, norm)
 
-            # 3. Construct FAISS IndexIDMap2(IndexFlatIP(384))
+            # 4. Construct FAISS IndexIDMap2(IndexFlatIP(384)) in scratch directory
             quantizer = faiss.IndexFlatIP(384)
             index = faiss.IndexIDMap2(quantizer)
 
@@ -292,11 +328,11 @@ class CandidateVectorBuilder:
 
                 index.add_with_ids(vectors_np, ids_np)
 
-            # 4. Save and Validate FAISS Index
-            faiss.write_index(index, index_file_path)
+            # 5. Save and Validate FAISS Index in scratch directory
+            faiss.write_index(index, scratch_index_file_path)
 
             # Verify readability and total vector count on disk
-            loaded_index = faiss.read_index(index_file_path)
+            loaded_index = faiss.read_index(scratch_index_file_path)
             if loaded_index.ntotal != index.ntotal:
                 raise IndexIntegrityError(
                     f"Read-back vector count mismatch: expected {index.ntotal}, got {loaded_index.ntotal}."
@@ -306,12 +342,12 @@ class CandidateVectorBuilder:
                     f"Read-back dimension mismatch: expected 384, got {loaded_index.d}."
                 )
 
-            # Compute SHA-256 checksum
-            sha256_hash = self.compute_sha256(index_file_path)
-            with open(f"{index_file_path}.sha256", "w", encoding="utf-8") as f:
+            # Compute SHA-256 checksum in scratch directory
+            sha256_hash = self.compute_sha256(scratch_index_file_path)
+            with open(f"{scratch_index_file_path}.sha256", "w", encoding="utf-8") as f:
                 f.write(f"{sha256_hash}  index.faiss\n")
 
-            # 5. Write Candidate Manifest JSON
+            # 6. Write Candidate Manifest JSON in scratch directory
             manifest_payload = {
                 "index_version_tag": tag,
                 "storage_path": os.path.abspath(index_file_path),
@@ -323,24 +359,52 @@ class CandidateVectorBuilder:
                 "total_documents": len(selected_pairs),
                 "included_document_codes": [doc.document_code for doc, ver in selected_pairs],
             }
-            tmp_manifest = f"{manifest_path}.tmp"
+            tmp_manifest = f"{scratch_manifest_path}.tmp"
             with open(tmp_manifest, "w", encoding="utf-8") as f:
                 json.dump(manifest_payload, f, indent=2)
-            os.replace(tmp_manifest, manifest_path)
+            os.replace(tmp_manifest, scratch_manifest_path)
 
-            # 6. Record KnowledgeIndex in PostgreSQL
-            k_index = KnowledgeIndex(
-                index_version_tag=tag,
-                storage_path=os.path.abspath(index_file_path),
-                total_vectors=index.ntotal,
-                status="STAGED",
-                created_at=datetime.now(timezone.utc),
-            )
-            session.add(k_index)
-            await session.commit()
+            # 7. Two-phase publication under promotion advisory lock (5432002)
+            lock_id = getattr(self.settings, "KB_PROMOTION_ADVISORY_LOCK_ID", 5432002)
+            async with DatabaseAdvisoryLock(session=session, lock_id=lock_id, timeout_seconds=10.0):
+                # Verify durable ownership is still intact and lease is unexpired
+                check_stmt = (
+                    select(KnowledgeIndex)
+                    .where(KnowledgeIndex.index_version_tag == tag)
+                    .with_for_update()
+                )
+                check_res = await session.execute(check_stmt)
+                active_record = check_res.scalar_one_or_none()
+                curr_time = datetime.now(timezone.utc)
+
+                if not active_record or active_record.status != "BUILDING":
+                    raise CandidateIndexBuildError(
+                        f"Candidate build failed: ownership record for tag '{tag}' was stolen or superseded."
+                    )
+
+                exp_dt = active_record.watchdog_expires_at
+                if exp_dt and exp_dt.tzinfo is None:
+                    exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+
+                if exp_dt and exp_dt < curr_time:
+                    raise CandidateIndexBuildError(
+                        f"Candidate build lease expired at {exp_dt.isoformat()} (now {curr_time.isoformat()}). Cannot publish."
+                    )
+
+                # Two-phase publication: atomic directory replace to candidate_dir
+                if os.path.exists(candidate_dir):
+                    shutil.rmtree(candidate_dir, ignore_errors=True)
+                os.replace(scratch_dir, candidate_dir)
+
+                # Update KnowledgeIndex to STAGED
+                active_record.status = "STAGED"
+                active_record.total_vectors = index.ntotal
+                active_record.watchdog_expires_at = None
+                active_record.storage_path = os.path.abspath(index_file_path)
+                await session.commit()
 
             logger.info(
-                "Candidate index '%s' successfully built in '%s' (%d vectors, SHA-256: %s).",
+                "Candidate index '%s' successfully built and published to '%s' (%d vectors, SHA-256: %s).",
                 tag,
                 candidate_dir,
                 index.ntotal,
@@ -362,15 +426,29 @@ class CandidateVectorBuilder:
             logger.error("Failed to build candidate index '%s': %s", tag, exc)
             await session.rollback()
 
+            # Remove un-staged candidate index record on build failure
+            try:
+                fail_stmt = (
+                    delete(KnowledgeIndex)
+                    .where(KnowledgeIndex.index_version_tag == tag)
+                )
+                await session.execute(fail_stmt)
+                await session.commit()
+            except Exception as rec_exc:
+                logger.error("Failed to clean up KnowledgeIndex on build failure: %s", rec_exc)
+
             # Quarantine/cleanup failed candidate directory to prevent stale artifacts
-            if os.path.exists(candidate_dir):
-                fail_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-                failed_dir = f"{candidate_dir}.failed_{fail_ts}_{uuid.uuid4().hex[:6]}"
-                try:
+            fail_ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            failed_dir = f"{candidate_dir}.failed_{fail_ts}_{uuid.uuid4().hex[:6]}"
+            try:
+                if os.path.exists(scratch_dir):
+                    shutil.move(scratch_dir, failed_dir)
+                    logger.warning("Quarantined failed candidate build scratch directory to '%s'.", failed_dir)
+                elif os.path.exists(candidate_dir):
                     shutil.move(candidate_dir, failed_dir)
                     logger.warning("Quarantined failed candidate build directory to '%s'.", failed_dir)
-                except Exception as clean_exc:
-                    logger.error("Failed to rename failed candidate directory: %s", clean_exc)
+            except Exception as clean_exc:
+                logger.error("Failed to rename failed candidate directory: %s", clean_exc)
 
             if isinstance(
                 exc,

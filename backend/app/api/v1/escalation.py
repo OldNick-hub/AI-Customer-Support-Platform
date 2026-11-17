@@ -14,7 +14,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,15 +26,18 @@ from app.api.deps import (
 )
 from app.core.clock import system_clock
 from app.core.logging import configure_safe_logger
-from app.models.customer import Conversation, Message
-from app.models.ticket import EscalationAudit
+from app.models.customer import Conversation, Customer, Message
+from app.models.ticket import EscalationAudit, Ticket
 from app.modules.ticketing.after_hours import evaluate_after_hours
 from app.modules.ticketing.escalation_service import EscalationService
 from app.modules.ticketing.worker import EscalationWorker
+from app.services.storage_service import validate_tenant_id
 
 logger = configure_safe_logger(logging.getLogger(__name__))
 
 router = APIRouter(prefix="/escalation", tags=["Intelligent Escalation & After-Hours"])
+
+GLOBAL_ADMIN_ROLES = {"SUPER_ADMIN", "GLOBAL_ADMIN"}
 
 
 # ==============================================================================
@@ -217,6 +220,35 @@ async def list_escalation_audits(
     limit_val = limit if isinstance(limit, int) else 50
 
     stmt = select(EscalationAudit)
+
+    # Tenant and customer isolation
+    caller_customer_id = auth_ctx.customer_id
+    if auth_ctx.auth_type == "SESSION_TOKEN" or (auth_ctx.roles and all(r.upper() in ("CUSTOMER", "VIP_CUSTOMER") for r in auth_ctx.roles)):
+        if caller_customer_id:
+            cust_uuid = uuid.UUID(str(caller_customer_id))
+            stmt = (
+                stmt.outerjoin(Ticket, EscalationAudit.ticket_id == Ticket.id)
+                .outerjoin(Conversation, EscalationAudit.conversation_id == Conversation.id)
+                .where(or_(Ticket.customer_id == cust_uuid, Conversation.customer_id == cust_uuid))
+            )
+    else:
+        is_global_admin = any(r.upper() in GLOBAL_ADMIN_ROLES for r in (auth_ctx.roles or []))
+        if not is_global_admin:
+            raw_tenant = (auth_ctx.jwt_claims or {}).get("tenant_id")
+            if raw_tenant and isinstance(raw_tenant, str) and raw_tenant.strip():
+                try:
+                    staff_tenant = validate_tenant_id(raw_tenant)
+                except Exception:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Invalid tenant identifier.",
+                    )
+                stmt = (
+                    stmt.outerjoin(Ticket, EscalationAudit.ticket_id == Ticket.id)
+                    .outerjoin(Conversation, EscalationAudit.conversation_id == Conversation.id)
+                    .outerjoin(Customer, or_(Ticket.customer_id == Customer.id, Conversation.customer_id == Customer.id))
+                    .where(Customer.metadata_["tenant_id"].as_string() == staff_tenant)
+                )
 
     if conv_id:
         stmt = stmt.where(EscalationAudit.conversation_id == conv_id)

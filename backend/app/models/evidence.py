@@ -62,6 +62,13 @@ class EvidenceFile(Base, UUIDPrimaryKeyMixin):
     processed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    purged_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    purge_retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_purge_attempt_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     message: Mapped[Optional["Message"]] = relationship(  # type: ignore[name-defined]
         "Message", back_populates="evidence_files"
@@ -79,11 +86,12 @@ class EvidenceFile(Base, UUIDPrimaryKeyMixin):
         "ExtractedEvidenceEntity", back_populates="evidence_file", cascade="all, delete-orphan", lazy="selectin"
     )
     verifications: Mapped[List["EvidenceVerification"]] = relationship(
-        "EvidenceVerification", back_populates="evidence_file", cascade="all, delete-orphan", lazy="selectin"
+        "EvidenceVerification", foreign_keys="[EvidenceVerification.evidence_file_id]", back_populates="evidence_file", cascade="all, delete-orphan", lazy="selectin"
     )
 
     __table_args__ = (
         Index("ix_evidence_files_conv_hash", "conversation_id", "sha256_hash"),
+        Index("ix_evidence_files_retention_lookup", "status", "retention_expires_at", "purge_retry_count"),
     )
 
 
@@ -124,6 +132,9 @@ class EvidenceVerification(Base, UUIDPrimaryKeyMixin):
     evidence_file_id: Mapped[uuid.UUID] = mapped_column(
         GUID(), ForeignKey("evidence_files.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    secondary_evidence_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        GUID(), ForeignKey("evidence_files.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     conversation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         GUID(), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=True, index=True
     )
@@ -146,6 +157,7 @@ class EvidenceVerification(Base, UUIDPrimaryKeyMixin):
     clarification_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     extracted_claims: Mapped[list] = mapped_column(JSONBType, default=list, nullable=False)
     field_comparisons: Mapped[dict] = mapped_column(JSONBType, default=dict, nullable=False)
+    security_flags: Mapped[list] = mapped_column(JSONBType, default=list, nullable=False)
     overall_confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     job_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     job_status: Mapped[str] = mapped_column(
@@ -168,7 +180,10 @@ class EvidenceVerification(Base, UUIDPrimaryKeyMixin):
     )
 
     evidence_file: Mapped["EvidenceFile"] = relationship(
-        "EvidenceFile", back_populates="verifications"
+        "EvidenceFile", foreign_keys=[evidence_file_id], back_populates="verifications"
+    )
+    secondary_evidence_file: Mapped[Optional["EvidenceFile"]] = relationship(
+        "EvidenceFile", foreign_keys=[secondary_evidence_file_id]
     )
     conversation: Mapped[Optional["Conversation"]] = relationship(  # type: ignore[name-defined]
         "Conversation", back_populates="verifications"

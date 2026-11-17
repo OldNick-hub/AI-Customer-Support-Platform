@@ -15,15 +15,17 @@ from typing import List, Optional, Tuple
 from app.core.logging import configure_safe_logger
 from app.core.pii import PIIMaskingEngine
 from app.modules.evidence.providers.base import BaseOCRProvider, DocumentExtractionResult
+from app.modules.evidence.providers.gemini_provider import GeminiVisionOCRProvider
 from app.modules.evidence.providers.mock_provider import DeterministicMockOCRProvider
 from app.modules.evidence.providers.pdf_extractor import PDFTextExtractor
 from app.modules.evidence.providers.receipt_parser import RuleBasedReceiptParser
 from app.modules.evidence.schemas import StructuredInvoiceData
+from app.modules.evidence.security_guard import AdversarialEvidenceGuard, SecurityScanResult
 
 logger = configure_safe_logger(logging.getLogger(__name__))
 
 
-# Adversarial Prompt Injection Patterns for Visual & Document Contexts
+# Adversarial Prompt Injection Patterns for Visual & Document Contexts (Retained for direct reference)
 PROMPT_INJECTION_PATTERNS = [
     re.compile(r"\b(?:system\s*override|admin\s*override)\b", re.IGNORECASE),
     re.compile(r"\bignore\s+(?:all\s+)?(?:previous|prior|above|system)\s+instructions\b", re.IGNORECASE),
@@ -57,10 +59,16 @@ class EvidenceProcessingPipeline:
         ocr_provider: Optional[BaseOCRProvider] = None,
         pdf_extractor: Optional[PDFTextExtractor] = None,
         receipt_parser: Optional[RuleBasedReceiptParser] = None,
+        security_guard: Optional[AdversarialEvidenceGuard] = None,
     ):
-        self.ocr_provider = ocr_provider or DeterministicMockOCRProvider()
+        if ocr_provider is not None:
+            self.ocr_provider = ocr_provider
+        else:
+            gemini_ocr = GeminiVisionOCRProvider()
+            self.ocr_provider = gemini_ocr if gemini_ocr.is_available else DeterministicMockOCRProvider()
         self.pdf_extractor = pdf_extractor or PDFTextExtractor()
         self.receipt_parser = receipt_parser or RuleBasedReceiptParser()
+        self.security_guard = security_guard or AdversarialEvidenceGuard()
 
     async def process_document(
         self,
@@ -102,17 +110,26 @@ class EvidenceProcessingPipeline:
 
             raw_text = extraction_result.raw_text
 
-            # 2. Security Defense: Adversarial Prompt Injection Scanning
-            is_malicious, quarantine_reason = self._scan_prompt_injection(raw_text)
+            # 2. Security Defense: Comprehensive Multimodal Security Guard (Metadata, Unicode, Injections)
+            sec_scan: SecurityScanResult = self.security_guard.scan_document(
+                file_bytes=file_bytes,
+                mime_type=mime_type,
+                raw_extracted_text=raw_text,
+                file_name=file_name,
+            )
+            is_malicious = sec_scan.is_malicious
+            quarantine_reason = sec_scan.quarantine_reason
+            sanitized_text = sec_scan.sanitized_text or raw_text
+
             if is_malicious:
                 logger.warning(
-                    "Prompt injection or adversarial directive detected in evidence file '%s': %s",
+                    "Adversarial directive or security injection detected in evidence file '%s': %s",
                     file_name,
                     quarantine_reason,
                 )
 
             # 3. Privacy & Compliance: PII and Payment Card Data Masking
-            pii_redacted_text = PIIMaskingEngine.mask(raw_text)
+            pii_redacted_text = PIIMaskingEngine.mask(sanitized_text)
 
             # 4. Structured Parsing: Financial Fields & Line Items
             structured_data = self.receipt_parser.parse(
@@ -163,11 +180,13 @@ class EvidenceProcessingPipeline:
         if not text:
             return False, None
 
-        for pattern in PROMPT_INJECTION_PATTERNS:
-            match = pattern.search(text)
-            if match:
-                matched_token = match.group(0)
-                return True, f"ADVERSARIAL_DIRECTIVE_DETECTED: Suspicious prompt directive '{matched_token}'"
+        # Check via security guard
+        norm_text, _ = self.security_guard.normalize_unicode(text)
+        findings = self.security_guard.scan_text_patterns(norm_text)
+        critical = [f for f in findings if f.severity in ("CRITICAL", "HIGH")]
+        if critical:
+            return True, f"ADVERSARIAL_DIRECTIVE_DETECTED: {critical[0].description}"
 
         return False, None
+
 

@@ -184,6 +184,80 @@ class EmbeddingModelLoadError(EmbeddingError):
         super().__init__(message=msg, detail={"model_name": model_name})
 
 
+class EmbeddingConfigurationError(EmbeddingError):
+    """Raised when embedding provider configuration is missing or invalid."""
+
+    status_code: int = 500
+    error_code: str = "EMBEDDING_CONFIGURATION_ERROR"
+    default_message: str = "Invalid embedding provider configuration."
+
+
+class EmbeddingAPIError(EmbeddingError):
+    """Raised when external embedding API call fails or times out."""
+
+    status_code: int = 502
+    error_code: str = "EMBEDDING_API_ERROR"
+    default_message: str = "External embedding API error."
+
+
+# --- Storage Subsystem Exceptions ---
+
+class StorageError(PlatformException):
+    """Base class for all object storage errors."""
+
+    status_code: int = 500
+    error_code: str = "STORAGE_ERROR"
+    default_message: str = "A storage subsystem error occurred."
+
+
+class StorageSecurityError(StorageError):
+    """Raised when an attempt to escape storage boundaries or violate tenant isolation is detected."""
+
+    status_code: int = 403
+    error_code: str = "STORAGE_SECURITY_ERROR"
+    default_message: str = "Storage access security violation detected."
+
+
+class StorageNotFoundError(StorageError):
+    """Raised when a requested storage object is not found."""
+
+    status_code: int = 404
+    error_code: str = "STORAGE_NOT_FOUND"
+    default_message: str = "The requested storage object was not found."
+
+
+class StorageQuotaExceededError(StorageError):
+    """Raised when an operation would exceed the application-level storage quota."""
+
+    status_code: int = 507
+    error_code: str = "STORAGE_QUOTA_EXCEEDED"
+    default_message: str = "Application-level storage quota exceeded."
+
+
+class StoragePayloadTooLargeError(StorageError):
+    """Raised when an uploaded object exceeds the maximum file size limit."""
+
+    status_code: int = 413
+    error_code: str = "STORAGE_PAYLOAD_TOO_LARGE"
+    default_message: str = "Object payload exceeds maximum allowed size."
+
+
+class StorageIntegrityError(StorageError):
+    """Raised when object payload checksum validation or cryptographic verification fails."""
+
+    status_code: int = 500
+    error_code: str = "STORAGE_INTEGRITY_ERROR"
+    default_message: str = "Storage object checksum or integrity verification failed."
+
+
+class StorageConfigurationError(StorageError):
+    """Raised when storage configuration is invalid or unsupported for the active environment."""
+
+    status_code: int = 500
+    error_code: str = "STORAGE_CONFIGURATION_ERROR"
+    default_message: str = "Invalid storage configuration."
+
+
 # --- Redis Infrastructure Exceptions ---
 
 class RedisError(PlatformException):
@@ -442,6 +516,65 @@ class CrossCustomerRestorationError(LifecycleError):
     status_code: int = 403
     error_code: str = "CROSS_CUSTOMER_RESTORATION_FORBIDDEN"
     default_message: str = "Cross-customer session restoration is strictly forbidden."
+
+
+# --- Storage Abstraction Exceptions (Phase 2.1) ---
+
+class StorageError(PlatformException):
+    """Base exception for all storage service and adapter errors."""
+
+    status_code: int = 500
+    error_code: str = "STORAGE_ERROR"
+    default_message: str = "A storage error occurred."
+
+
+class StorageSecurityError(StorageError):
+    """Raised when an operation attempts to escape storage root, access across tenant boundaries, or inject malicious keys."""
+
+    status_code: int = 403
+    error_code: str = "STORAGE_SECURITY_VIOLATION"
+    default_message: str = "Storage security violation detected."
+
+
+class StorageNotFoundError(StorageError):
+    """Raised when a requested storage object key does not exist."""
+
+    status_code: int = 404
+    error_code: str = "STORAGE_OBJECT_NOT_FOUND"
+    default_message: str = "Storage object not found."
+
+
+class StoragePayloadTooLargeError(StorageError):
+    """Raised when an object payload exceeds the maximum allowed single-object size limit."""
+
+    status_code: int = 413
+    error_code: str = "STORAGE_PAYLOAD_TOO_LARGE"
+    default_message: str = "Storage object payload exceeds maximum allowed size."
+
+
+class StorageQuotaExceededError(StorageError):
+    """Raised when an operation would exceed the tenant's total storage quota."""
+
+    status_code: int = 507
+    error_code: str = "STORAGE_QUOTA_EXCEEDED"
+    default_message: str = "Storage quota exceeded for this tenant."
+
+
+class StorageIntegrityError(StorageError):
+    """Raised when stored data fails cryptographic hash or payload verification."""
+
+    status_code: int = 500
+    error_code: str = "STORAGE_INTEGRITY_MISMATCH"
+    default_message: str = "Storage object integrity verification failed."
+
+
+class StorageConfigurationError(StorageError):
+    """Raised when storage adapter configuration or provider initialization fails."""
+
+    status_code: int = 500
+    error_code: str = "STORAGE_CONFIGURATION_ERROR"
+    default_message: str = "Storage provider configuration error."
+
 
 
 

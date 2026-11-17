@@ -10,6 +10,7 @@ from typing import Optional
 
 from app.core.config import settings
 from app.core.logging import configure_safe_logger
+from app.core.pii import PIIMaskingEngine
 from app.modules.evidence.providers.base import BaseOCRProvider, DocumentExtractionResult
 from app.modules.evidence.schemas import PageExtractionMetadata
 
@@ -21,7 +22,7 @@ class GeminiVisionOCRProvider(BaseOCRProvider):
 
     def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None):
         self.api_key = api_key or settings.GEMINI_API_KEY
-        self.model_name = model_name or getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash")
+        self.model_name = model_name or getattr(settings, "GEMINI_MODEL", "gemini-3.8-flash")
 
     @property
     def provider_name(self) -> str:
@@ -29,8 +30,11 @@ class GeminiVisionOCRProvider(BaseOCRProvider):
 
     @property
     def is_available(self) -> bool:
-        """True if a valid Gemini API key is configured."""
-        return bool(self.api_key and isinstance(self.api_key, str) and self.api_key.strip())
+        """True if a valid, non-placeholder Gemini API key is configured."""
+        if not self.api_key or not isinstance(self.api_key, str):
+            return False
+        cleaned = self.api_key.strip()
+        return bool(cleaned and not cleaned.lower().startswith("your_"))
 
     async def extract_document(
         self,
@@ -50,7 +54,11 @@ class GeminiVisionOCRProvider(BaseOCRProvider):
             # We use httpx to issue direct REST call to Gemini Vision generateContent
             import httpx
 
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
+            headers = {
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.api_key,
+            }
             b64_data = base64.b64encode(file_bytes).decode("utf-8")
 
             payload = {
@@ -80,7 +88,7 @@ class GeminiVisionOCRProvider(BaseOCRProvider):
             }
 
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(url, json=payload)
+                response = await client.post(url, headers=headers, json=payload)
                 response.raise_for_status()
                 data = response.json()
 
@@ -106,6 +114,7 @@ class GeminiVisionOCRProvider(BaseOCRProvider):
             )
 
         except Exception as exc:
-            logger.error("Gemini Vision OCR extraction failed: %s", exc)
-            raise RuntimeError(f"Gemini Vision extraction failed: {str(exc)}") from exc
+            safe_err = PIIMaskingEngine.mask_text(str(exc))
+            logger.error("Gemini Vision OCR extraction failed: %s", safe_err)
+            raise RuntimeError(f"Gemini Vision extraction failed: {safe_err}") from exc
 

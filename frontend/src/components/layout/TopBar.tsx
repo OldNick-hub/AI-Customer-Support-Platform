@@ -1,9 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { ThemeToggle } from '../common/ThemeToggle';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { LiquidToggle, NimbusToggleIcons } from '../ui/liquid-glass-toggle';
 import { SearchIcon, BellIcon, ShieldCheckIcon } from '../common/Icons';
-import { GlassmorphismCta } from '../common/GlassmorphismCta';
+import GlassmorphismCta from '../ui/glassmorphism-cta';
 
 export const TopBar: React.FC = () => {
+  const { isDark, toggleTheme } = useTheme();
+  const {
+    activeSession,
+    currentUser,
+    loginAs,
+  } = useAuth();
+
   const [backendHealth, setBackendHealth] = useState<'healthy' | 'checking' | 'offline'>('checking');
 
   useEffect(() => {
@@ -33,7 +42,7 @@ export const TopBar: React.FC = () => {
         height: '64px',
         position: 'sticky',
         top: 0,
-        zIndex: 40,
+        zIndex: 50,
         background: 'var(--bg-topbar)',
         backdropFilter: 'var(--blur-lg)',
         WebkitBackdropFilter: 'var(--blur-lg)',
@@ -45,64 +54,93 @@ export const TopBar: React.FC = () => {
         transition: 'all var(--transition-normal)',
       }}
     >
-      {/* Search Bar */}
-      <div style={{ position: 'relative', width: '360px', maxWidth: '100%' }}>
-        <SearchIcon
-          size={16}
-          style={{
-            position: 'absolute',
-            left: '12px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: 'var(--text-muted)',
-          }}
-        />
-        <input
-          type="text"
-          placeholder="Search tickets, customers, policies..."
-          style={{
-            width: '100%',
-            padding: '8px 48px 8px 36px',
-            borderRadius: 'var(--radius-full)',
-            background: 'var(--surface-glass-input)',
-            border: 'var(--border-card)',
-            color: 'var(--text-primary)',
-            fontSize: '0.8125rem',
-            outline: 'none',
-            transition: 'all var(--transition-fast)',
-          }}
-          onFocus={(e) => {
-            e.currentTarget.style.borderColor = 'var(--border-highlight)';
-            e.currentTarget.style.boxShadow = 'var(--shadow-glow-blue)';
-          }}
-          onBlur={(e) => {
-            e.currentTarget.style.borderColor = 'var(--border-card)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        />
-        <span
-          style={{
-            position: 'absolute',
-            right: '10px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            fontSize: '0.6875rem',
-            fontFamily: 'var(--font-mono)',
-            padding: '2px 6px',
-            borderRadius: '4px',
-            background: 'var(--surface-glass-elevated)',
-            border: 'var(--border-subtle)',
-            color: 'var(--text-muted)',
-          }}
-        >
-          Ctrl+K
-        </span>
+      {/* Brand Identity & Search Bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flex: 1, maxWidth: '640px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', flexShrink: 0 }}>
+          <div
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: 'var(--radius-md)',
+              background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-cyan))',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#ffffff',
+              boxShadow: 'var(--shadow-glow-blue)',
+            }}
+          >
+            <ShieldCheckIcon size={20} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.9375rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+              Antigravity AI
+            </div>
+            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+              Command Center
+            </div>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div style={{ position: 'relative', flex: 1, maxWidth: '340px' }}>
+          <SearchIcon
+            size={16}
+            style={{
+              position: 'absolute',
+              left: '12px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--text-muted)',
+            }}
+          />
+          <input
+            type="text"
+            placeholder="Search tickets, customers, policies..."
+            style={{
+              width: '100%',
+              padding: '8px 48px 8px 36px',
+              borderRadius: 'var(--radius-full)',
+              background: 'var(--surface-glass-input)',
+              border: 'var(--border-card)',
+              color: 'var(--text-primary)',
+              fontSize: '0.8125rem',
+              outline: 'none',
+              transition: 'all var(--transition-fast)',
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border-highlight)';
+              e.currentTarget.style.boxShadow = 'var(--shadow-glow-blue)';
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border-card)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          />
+          <span
+            style={{
+              position: 'absolute',
+              right: '10px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              fontSize: '0.6875rem',
+              fontFamily: 'var(--font-mono)',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              background: 'var(--surface-glass-elevated)',
+              border: 'var(--border-subtle)',
+              color: 'var(--text-muted)',
+            }}
+          >
+            Ctrl+K
+          </span>
+        </div>
       </div>
 
       {/* Right Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
         {/* Animated Command-Center AI Assistant CTA */}
-        <GlassmorphismCta label="Launch AI Copilot" to="/conversations" size="sm" />
+        <GlassmorphismCta size="sm" label="Launch AI Copilot" href="/conversations" />
 
         {/* Backend Status Indicator */}
         <div
@@ -139,24 +177,55 @@ export const TopBar: React.FC = () => {
           <span>API: {backendHealth === 'healthy' ? 'Online' : backendHealth === 'checking' ? 'Connecting' : 'Offline'}</span>
         </div>
 
-        {/* Security Role Tag */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '4px 10px',
-            borderRadius: 'var(--radius-md)',
-            background: 'var(--accent-primary-light)',
-            border: '1px solid rgba(59, 130, 246, 0.25)',
-            color: 'var(--accent-primary)',
-            fontSize: '0.75rem',
-            fontWeight: 600,
-          }}
-        >
-          <ShieldCheckIcon size={14} />
-          <span>Role: AGENT</span>
-        </div>
+        {/* Security Role Indicator & Quick Sign-in */}
+        {(!activeSession || (!currentUser?.roles?.length && !activeSession.roles?.length && activeSession.auth_type !== 'SESSION_TOKEN')) ? (
+          <button
+            type="button"
+            onClick={() => loginAs('agent')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '5px 12px',
+              borderRadius: 'var(--radius-md)',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: 'var(--accent-rose)',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+            }}
+            title="Click to sign in as Staff Agent"
+          >
+            <ShieldCheckIcon size={14} />
+            <span>Sign In (Agent)</span>
+          </button>
+        ) : (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '5px 12px',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--accent-primary-light)',
+              border: '1px solid rgba(59, 130, 246, 0.25)',
+              color: 'var(--accent-primary)',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+            }}
+            title={`Signed in as ${activeSession?.display_name || 'Agent'}`}
+          >
+            <ShieldCheckIcon size={14} />
+            <span>
+              Role:{' '}
+              {currentUser?.roles?.[0] ||
+                activeSession?.roles?.[0] ||
+                (activeSession?.auth_type === 'SESSION_TOKEN' ? 'CUSTOMER' : 'AGENT')}
+            </span>
+          </div>
+        )}
 
         {/* Notifications Icon Button */}
         <button
@@ -199,8 +268,15 @@ export const TopBar: React.FC = () => {
           />
         </button>
 
-        {/* Dark / Light Mode Switch */}
-        <ThemeToggle />
+        {/* Liquid Glass Dark / Light Mode Switch */}
+        <LiquidToggle
+          size={58}
+          tone={isDark ? 'dark' : 'light'}
+          checked={isDark}
+          onCheckedChange={() => toggleTheme()}
+          icons={{ off: NimbusToggleIcons.sun, on: NimbusToggleIcons.moon }}
+          label={isDark ? 'Dark mode active. Click to switch to Light mode' : 'Light mode active. Click to switch to Dark mode'}
+        />
       </div>
     </header>
   );

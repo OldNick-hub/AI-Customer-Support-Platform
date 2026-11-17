@@ -23,7 +23,8 @@
     /* Paths */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "lucide-react": ["src/lib/lucide-compat.tsx"]
     }
   },
   "include": ["src"],

@@ -12,6 +12,7 @@ Coordinates the unified RAG execution lifecycle:
 
 from datetime import date, datetime, timezone
 import logging
+import re
 import time
 from typing import Any, Dict, List, Optional
 import uuid
@@ -60,6 +61,8 @@ class RAGInternalRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
     query: str = Field(..., description="Customer or agent natural language query")
+    raw_customer_query: Optional[str] = Field(None, description="Original un-translated customer query text if available")
+    preferred_language: Optional[str] = Field(None, description="Preferred dialogue language code")
     session_token: Optional[str] = Field(None, description="Authenticated customer session token")
     user_id_or_email: Optional[str] = Field(None, description="Authenticated staff user identifier")
     jwt_claims: Optional[Dict[str, Any]] = Field(None, description="Verified JWT claims")
@@ -71,6 +74,12 @@ class RAGInternalRequest(BaseModel):
     )
     product_line: Optional[str] = Field(None, description="Product line scoping filter")
     document_code: Optional[str] = Field(None, description="Target document code filter")
+    tone_directive: Optional[str] = Field(None, description="Optional controlled tone directive for grounded generation")
+    sentiment_class: Optional[str] = Field(None, description="Detected customer sentiment category")
+    conversation_history: List[Dict[str, str]] = Field(
+        default_factory=list,
+        description="Chronological recent turn history scoped strictly to the active conversation",
+    )
     correlation_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
         description="Unique request correlation ID for end-to-end tracing",
@@ -86,6 +95,20 @@ class RAGInternalRequest(BaseModel):
             )
         return v
 
+
+
+CARETAKER_FALLBACK_SYSTEM_INSTRUCTION = """You are a senior customer support representative on our team.
+A customer has reached out with an inquiry or issue. Speak naturally, warmly, and helpfully like a real human customer support specialist.
+
+HUMAN SUPPORT DIRECTIVES:
+1. Tone & Voice: Speak like an authentic, empathetic human support specialist. Never sound like a generic AI or canned bot.
+2. Direct Context Relevance: Respond directly to what the customer actually asked. Never say "I am doing well, thank you for asking!" unless the customer explicitly asked how you are.
+3. Order / Delivery / Damaged Goods: Sincere empathy first ("Oh no, I'm really sorry your order arrived damaged..."). Ask clearly for any details needed to look it up (Order ID, photos of damage, tracking number).
+4. Concrete Help: Offer clear next steps, such as opening a priority support ticket or having a team specialist take ownership of the issue.
+5. Responsible Care: Be reassuring and supportive without making unauthorized financial guarantees or policy commitments.
+6. Seamless Language: Match the customer's exact language and dialect naturally (English, conversational Hindi/Hinglish, Spanish, French, German).
+7. Flow: Write concise, fluid paragraphs with natural pacing. Avoid mechanical formatting.
+"""
 
 
 class RAGOrchestrator:
@@ -185,6 +208,99 @@ class RAGOrchestrator:
         if reason == "INSUFFICIENT_EVIDENCE":
             return "I could not find sufficient authoritative information in our knowledge base to answer your question."
         return "I could not locate authorized knowledge base records matching your request."
+
+    async def _generate_caretaker_fallback(
+        self,
+        query: str,
+        reason: str,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        tone_directive: Optional[str] = None,
+        preferred_language: Optional[str] = None,
+    ) -> Optional[str]:
+        """Generates an empathetic AI customer care response via LLM Gateway when specific KB docs are missing."""
+        if not getattr(self.settings, "ENABLE_CARETAKER_FALLBACK", True):
+            return None
+        try:
+            if not self.generator or not getattr(self.generator, "llm_gateway", None):
+                return None
+
+            history_lines: List[str] = []
+            if conversation_history:
+                for entry in conversation_history[-6:]:
+                    role = str(entry.get("role") or "CUSTOMER").upper()
+                    c = str(entry.get("content") or "").strip()
+                    if c:
+                        history_lines.append(f"{role}: {c}")
+            hist_str = "\n".join(history_lines) if history_lines else "None"
+
+            tone_str = f"Tone guidance: {tone_directive}\n" if tone_directive else ""
+            lang_str = f"Customer preferred language: {preferred_language}\n" if preferred_language else ""
+
+            prompt = (
+                f"<customer_inquiry>\n{query}\n</customer_inquiry>\n\n"
+                f"<recent_conversation>\n{hist_str}\n</recent_conversation>\n\n"
+                f"{lang_str}"
+                f"{tone_str}"
+                "Please respond directly to the customer as their dedicated AI Customer Support Assistant."
+            )
+
+            resp = await self.generator.llm_gateway.generate(
+                prompt=prompt,
+                system_instruction=CARETAKER_FALLBACK_SYSTEM_INSTRUCTION,
+                temperature=0.3,
+            )
+            if resp and resp.content and resp.content.strip():
+                clean_reply = resp.content.strip()
+                if self.sanitizer:
+                    clean_reply = self.sanitizer.sanitize_output(clean_reply)
+                return clean_reply
+        except Exception as exc:
+            logger.warning(
+                "Caretaker LLM fallback generation encountered an issue: %s; falling back to default message.",
+                exc,
+            )
+        return None
+
+    def _sanitize_history(self, history: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """Sanitizes up to 10 prior conversation turns and strips any injected turns."""
+        if not history:
+            return []
+        cleaned: List[Dict[str, str]] = []
+        for entry in history[-10:]:
+            content = str(entry.get("content") or "").strip()
+            if not content:
+                continue
+            san = self.sanitizer.sanitize_input(content)
+            if san.risk_detected and san.risk_reason == "PROMPT_INJECTION_DETECTED":
+                continue
+            role = str(entry.get("role") or "CUSTOMER").upper()
+            cleaned.append({"role": role, "content": san.clean_query})
+        return cleaned
+
+    def _build_retrieval_query(
+        self,
+        clean_query: str,
+        sanitized_history: List[Dict[str, str]],
+    ) -> str:
+        """Enriches short or anaphoric follow-up queries with the prior customer turn for retrieval."""
+        if not sanitized_history:
+            return clean_query
+        words = clean_query.split()
+        is_short_followup = len(words) <= 6
+        has_reference = bool(
+            re.search(
+                r"\b(?:it|that|this|those|these|them|they|what about|how about|and for|else)\b",
+                clean_query,
+                re.IGNORECASE,
+            )
+        )
+        if not (is_short_followup or has_reference):
+            return clean_query
+        for entry in reversed(sanitized_history):
+            if entry.get("role") == "CUSTOMER" and entry.get("content") and entry["content"] != clean_query:
+                combined = f"{entry['content']} {clean_query}".strip()
+                return combined[:1500]
+        return clean_query
 
     async def process_query(
         self,
@@ -296,9 +412,11 @@ class RAGOrchestrator:
 
 
             # 4. 3-Layer Security-Aware Retrieval
+            sanitized_history = self._sanitize_history(request.conversation_history)
+            retrieval_query = self._build_retrieval_query(san_result.clean_query, sanitized_history)
             try:
                 retrieval_result: RetrievalResult = await self.retriever.retrieve(
-                    query=san_result.clean_query,
+                    query=retrieval_query,
                     session=session,
                     security_context=sec_ctx,
                     effective_as_of_date=request.effective_as_of_date,
@@ -338,6 +456,22 @@ class RAGOrchestrator:
             if retrieval_result.is_refusal:
                 reason = retrieval_result.refusal_reason or "RETRIEVAL_REFUSAL"
                 msg = self._resolve_retrieval_refusal_message(reason)
+                if reason in (
+                    "NO_AUTHORIZED_CANDIDATES",
+                    "LOW_SIMILARITY_OUT_OF_DOMAIN",
+                    "INSUFFICIENT_EVIDENCE",
+                    "INCONCLUSIVE_RETRIEVAL_CONFIDENCE",
+                    "RETRIEVAL_REFUSAL",
+                ):
+                    caretaker_msg = await self._generate_caretaker_fallback(
+                        query=request.raw_customer_query or san_result.clean_query,
+                        reason=reason,
+                        conversation_history=sanitized_history,
+                        tone_directive=request.tone_directive,
+                        preferred_language=request.preferred_language,
+                    )
+                    if caretaker_msg:
+                        msg = caretaker_msg
                 return self._build_refusal(
                     reason=reason,
                     message=msg,
@@ -348,9 +482,19 @@ class RAGOrchestrator:
 
             # 6. Empty Evidence Gate
             if not retrieval_result.chunks:
-                msg = self._resolve_retrieval_refusal_message("INSUFFICIENT_EVIDENCE")
+                reason = "INSUFFICIENT_EVIDENCE"
+                msg = self._resolve_retrieval_refusal_message(reason)
+                caretaker_msg = await self._generate_caretaker_fallback(
+                    query=request.raw_customer_query or san_result.clean_query,
+                    reason=reason,
+                    conversation_history=sanitized_history,
+                    tone_directive=request.tone_directive,
+                    preferred_language=request.preferred_language,
+                )
+                if caretaker_msg:
+                    msg = caretaker_msg
                 return self._build_refusal(
-                    reason="INSUFFICIENT_EVIDENCE",
+                    reason=reason,
                     message=msg,
                     correlation_id=correlation_id,
                     start_time=start_time,
@@ -361,6 +505,8 @@ class RAGOrchestrator:
             gen_result = await self.generator.generate_answer(
                 retrieval_result=retrieval_result,
                 query_override=san_result.clean_query,
+                tone_directive=request.tone_directive,
+                conversation_history=sanitized_history,
             )
 
             # 8. Output Sanitization (PII and system tokens)

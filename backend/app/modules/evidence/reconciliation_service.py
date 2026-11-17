@@ -39,6 +39,7 @@ from app.modules.evidence.reconciler import (
 from app.modules.evidence.schemas import (
     ClarificationItemResponse,
     ClarificationResponseRequest,
+    FinancialVerificationLevel,
     ReconciliationJobStatusResponse,
     ReconciliationRequest,
     ReconciliationResponse,
@@ -165,6 +166,44 @@ class ReconciliationService:
         if evidence.conversation_id != conv_uuid:
             raise ReconciliationAuthorizationError("Evidence file is not linked to the requested conversation.")
 
+        # Check optional secondary evidence for multi-document cross-verification
+        sec_evidence_uuid: Optional[uuid.UUID] = None
+        sec_invoice_data: Optional[StructuredInvoiceData] = None
+        sec_file_hash: Optional[str] = None
+        if request.secondary_evidence_id:
+            try:
+                sec_evidence_uuid = uuid.UUID(request.secondary_evidence_id)
+            except (ValueError, TypeError):
+                raise ReconciliationNotFoundException(f"Invalid secondary evidence UUID: '{request.secondary_evidence_id}'")
+
+            sec_ev_stmt = (
+                select(EvidenceFile)
+                .where(EvidenceFile.id == sec_evidence_uuid)
+                .options(selectinload(EvidenceFile.extracted_entities))
+            )
+            sec_ev_res = await db.execute(sec_ev_stmt)
+            sec_evidence = sec_ev_res.scalar_one_or_none()
+            if not sec_evidence:
+                raise ReconciliationNotFoundException(f"Secondary evidence '{request.secondary_evidence_id}' not found.")
+
+            if sec_evidence.conversation_id != conv_uuid:
+                raise ReconciliationAuthorizationError("Secondary evidence file is not linked to the requested conversation.")
+
+            if resolved_customer_id and not is_staff:
+                if str(sec_evidence.customer_id) != str(resolved_customer_id):
+                    raise ReconciliationAuthorizationError("Customer is not authorized to access secondary evidence.")
+
+            sec_file_hash = sec_evidence.sha256_hash
+            if sec_evidence.extracted_entities:
+                sec_entity = sec_evidence.extracted_entities[0]
+                if sec_entity.extraction_metadata:
+                    try:
+                        sec_invoice_data = StructuredInvoiceData(**sec_entity.extraction_metadata)
+                    except Exception:
+                        sec_invoice_data = self._reconstruct_from_entity(sec_entity)
+                else:
+                    sec_invoice_data = self._reconstruct_from_entity(sec_entity)
+
         # 4. Check Quarantined / Malicious Evidence
         is_quarantined = evidence.status == "FLAGGED_UNSAFE" or evidence.is_malicious
         quarantine_reason = evidence.quarantine_reason
@@ -181,6 +220,7 @@ class ReconciliationService:
             serialized_claims = [c.model_dump(mode="json") for c in claims_payload.claims]
             verification = EvidenceVerification(
                 evidence_file_id=evidence_uuid,
+                secondary_evidence_file_id=sec_evidence_uuid,
                 conversation_id=conv_uuid,
                 message_id=message_uuid,
                 claim_text=claims_payload.pii_masked_text,
@@ -193,6 +233,7 @@ class ReconciliationService:
                 clarification_prompt=None,
                 extracted_claims=serialized_claims,
                 field_comparisons={"results": [], "summary": "Job queued for asynchronous background processing."},
+                security_flags=claims_payload.security_flags,
                 overall_confidence=0.0,
                 job_id=job_id,
                 job_status="PENDING",
@@ -229,6 +270,10 @@ class ReconciliationService:
             customer_id=str(conversation.customer_id) if conversation.customer_id else None,
             is_quarantined=is_quarantined,
             quarantine_reason=quarantine_reason,
+            secondary_evidence_data=sec_invoice_data,
+            secondary_evidence_id=str(sec_evidence_uuid) if sec_evidence_uuid else None,
+            primary_file_hash=evidence.sha256_hash,
+            secondary_file_hash=sec_file_hash,
         )
 
         # 9. Determine Clarification Need
@@ -261,6 +306,7 @@ class ReconciliationService:
         now = utc_now()
         verification = EvidenceVerification(
             evidence_file_id=evidence_uuid,
+            secondary_evidence_file_id=sec_evidence_uuid,
             conversation_id=conv_uuid,
             message_id=message_uuid,
             claim_text=claims_payload.pii_masked_text,
@@ -272,7 +318,14 @@ class ReconciliationService:
             clarification_status=clarification_status,
             clarification_prompt=reconcile_result.clarification_prompt,
             extracted_claims=serialized_claims,
-            field_comparisons={"results": serialized_comps, "summary": reconcile_result.summary},
+            field_comparisons={
+                "results": serialized_comps,
+                "summary": reconcile_result.summary,
+                "verification_level": reconcile_result.verification_level.value,
+                "is_refund_authorized": reconcile_result.is_refund_authorized,
+                "requires_authoritative_verification": reconcile_result.requires_authoritative_verification,
+            },
+            security_flags=claims_payload.security_flags,
             overall_confidence=reconcile_result.overall_confidence,
             job_id=job_id,
             job_status=job_status,
@@ -655,9 +708,35 @@ class ReconciliationService:
         elif isinstance(v.field_comparisons, list):
             field_comps = v.field_comparisons
 
+        sec_id = str(v.secondary_evidence_file_id) if getattr(v, "secondary_evidence_file_id", None) else None
+        sec_flags = getattr(v, "security_flags", []) or []
+
+        fc_dict = v.field_comparisons if isinstance(v.field_comparisons, dict) else {}
+        verif_level_str = fc_dict.get("verification_level")
+        try:
+            verif_level = (
+                FinancialVerificationLevel(verif_level_str)
+                if verif_level_str
+                else (
+                    FinancialVerificationLevel.DOCUMENT_CORROBORATED
+                    if v.secondary_evidence_file_id
+                    else FinancialVerificationLevel.EXTRACTED
+                )
+            )
+        except (ValueError, KeyError):
+            verif_level = (
+                FinancialVerificationLevel.DOCUMENT_CORROBORATED
+                if v.secondary_evidence_file_id
+                else FinancialVerificationLevel.EXTRACTED
+            )
+
+        is_refund_auth = bool(fc_dict.get("is_refund_authorized", False))
+        req_auth_verif = bool(fc_dict.get("requires_authoritative_verification", True))
+
         return ReconciliationResponse(
             verification_id=str(v.id),
             evidence_id=str(v.evidence_file_id),
+            secondary_evidence_id=sec_id,
             conversation_id=str(v.conversation_id) if v.conversation_id else "",
             message_id=str(v.message_id) if v.message_id else None,
             job_id=v.job_id,
@@ -670,7 +749,11 @@ class ReconciliationService:
             clarification_prompt=v.clarification_prompt,
             field_comparisons=field_comps,
             extracted_claims=v.extracted_claims if isinstance(v.extracted_claims, list) else [],
+            security_flags=sec_flags,
             is_quarantined=False,
+            verification_level=verif_level,
+            is_refund_authorized=is_refund_auth,
+            requires_authoritative_verification=req_auth_verif,
             created_at=v.created_at,
             processing_started_at=v.processing_started_at,
             verified_at=v.verified_at,

@@ -7,7 +7,7 @@ holiday exclusion, and deterministic rolling forward to the next eligible busine
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.config import settings
@@ -186,4 +186,124 @@ def _calculate_next_business_time_internal(
         tzinfo=target_tz
     )
     return fallback_local.astimezone(timezone.utc)
+
+
+def add_business_minutes(
+    start_dt: datetime,
+    minutes: int,
+    calendar: Optional[Union[SLACalendar, Dict[str, Any]]] = None,
+) -> datetime:
+    """Calculates a future timestamp by advancing strictly through operational business minutes.
+
+    Excludes weekends, corporate holidays, and non-working hours.
+    """
+    if minutes <= 0:
+        return start_dt if start_dt.tzinfo else start_dt.replace(tzinfo=timezone.utc)
+
+    # 1. Resolve calendar attributes
+    if calendar is not None and isinstance(calendar, SLACalendar):
+        tz_name = calendar.timezone or settings.BUSINESS_HOURS_TIMEZONE
+        start_time = calendar.work_start_time
+        end_time = calendar.work_end_time
+        work_days = set(calendar.work_days or [1, 2, 3, 4, 5])
+        holidays_raw = calendar.holidays or []
+    elif calendar is not None and isinstance(calendar, dict):
+        tz_name = calendar.get("timezone", settings.BUSINESS_HOURS_TIMEZONE)
+        start_time = _parse_time(calendar.get("work_start_time", settings.BUSINESS_HOUR_START))
+        end_time = _parse_time(calendar.get("work_end_time", settings.BUSINESS_HOUR_END))
+        work_days = set(calendar.get("work_days", [1, 2, 3, 4, 5]))
+        holidays_raw = calendar.get("holidays", [])
+    else:
+        tz_name = settings.BUSINESS_HOURS_TIMEZONE
+        start_time = _parse_time(settings.BUSINESS_HOUR_START)
+        end_time = _parse_time(settings.BUSINESS_HOUR_END)
+        work_days = {1, 2, 3, 4, 5}
+        holidays_raw = []
+
+    holidays: set[str] = set()
+    for h in holidays_raw:
+        if isinstance(h, (date, datetime)):
+            holidays.add(h.strftime("%Y-%m-%d"))
+        elif isinstance(h, str):
+            holidays.add(h.strip())
+
+    target_tz = _get_tz(tz_name)
+    if start_dt.tzinfo is None:
+        utc_dt = start_dt.replace(tzinfo=timezone.utc)
+    else:
+        utc_dt = start_dt.astimezone(timezone.utc)
+    local_dt = utc_dt.astimezone(target_tz)
+
+    # Check for invalid time window
+    if start_time >= end_time:
+        return (utc_dt + timedelta(minutes=minutes)).astimezone(timezone.utc)
+
+    # 2. Advance to start of business hours if currently after hours or on weekend/holiday
+    curr_date = local_dt.date()
+    curr_time = local_dt.time()
+    curr_str = curr_date.strftime("%Y-%m-%d")
+    weekday = local_dt.isoweekday()
+
+    if weekday not in work_days or curr_str in holidays or curr_time >= end_time or curr_time < start_time:
+        next_bus_utc = _calculate_next_business_time_internal(
+            local_dt=local_dt,
+            target_tz=target_tz,
+            start_time=start_time,
+            end_time=end_time,
+            work_days=work_days,
+            holidays=holidays,
+        )
+        local_dt = next_bus_utc.astimezone(target_tz)
+
+    remaining_minutes = minutes
+    # 3. Advance through working hours
+    while remaining_minutes > 0:
+        day_end = datetime.combine(local_dt.date(), end_time).replace(tzinfo=target_tz)
+        avail_minutes = int((day_end - local_dt).total_seconds() / 60)
+
+        if remaining_minutes <= avail_minutes:
+            local_dt = local_dt + timedelta(minutes=remaining_minutes)
+            remaining_minutes = 0
+            break
+        else:
+            remaining_minutes -= avail_minutes
+            # Advance to next business day start
+            next_bus_utc = _calculate_next_business_time_internal(
+                local_dt=day_end,
+                target_tz=target_tz,
+                start_time=start_time,
+                end_time=end_time,
+                work_days=work_days,
+                holidays=holidays,
+            )
+            local_dt = next_bus_utc.astimezone(target_tz)
+
+    return local_dt.astimezone(timezone.utc)
+
+
+def calculate_sla_deadlines(
+    created_at: datetime,
+    target_minutes: int,
+    calendar: Optional[Union[SLACalendar, Dict[str, Any]]] = None,
+    total_paused_duration_seconds: int = 0,
+) -> Tuple[datetime, datetime]:
+    """Calculates operational SLA warning (75%) and breach (100%) deadlines.
+
+    Preserves total_paused_duration_seconds by extending both deadlines accordingly.
+    """
+    if target_minutes <= 0:
+        raise ValueError(f"SLA target minutes must be strictly positive, got {target_minutes}.")
+
+    warning_minutes = max(1, int(round(0.75 * target_minutes)))
+
+    base_warning = add_business_minutes(created_at, warning_minutes, calendar)
+    base_breach = add_business_minutes(created_at, target_minutes, calendar)
+
+    if total_paused_duration_seconds > 0:
+        paused_delta = timedelta(seconds=total_paused_duration_seconds)
+        base_warning += paused_delta
+        base_breach += paused_delta
+
+    return base_warning, base_breach
+
 

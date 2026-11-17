@@ -63,8 +63,10 @@ RESTRICTED_UPDATE_TABLES = {
         "primary_language",
         "overall_sentiment_score",
         "is_escalated",
+        "negative_detected_at",
         "last_message_at",
         "closed_at",
+        "custom_title",
     ]
 }
 

@@ -8,13 +8,14 @@ This endpoint exposes the Advanced RAG Knowledge Assistant engine only.
 Downstream Modules 5 (Sentiment) and 6 (Multilingual) are not yet integrated.
 """
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import logging
 from typing import Any, Dict, List, Optional
 import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
@@ -26,9 +27,13 @@ from app.api.deps import (
     get_rag_orchestrator,
 )
 from app.core.logging import configure_safe_logger
+from app.core.rate_limiter import check_chat_rate_limit
+from app.models.chat import ChatIdempotencyRecord
+from app.models.customer import Conversation, Customer, Session as CustomerSession
 from app.modules.multilingual.orchestrator import MultilingualOrchestrator
 from app.modules.rag.generator import RAGResolutionResult
 from app.modules.rag.orchestrator import RAGInternalRequest, RAGOrchestrator
+from app.services.storage_service import validate_tenant_id
 
 logger = configure_safe_logger(logging.getLogger(__name__))
 
@@ -199,6 +204,7 @@ async def post_chat_message(
     orchestrator: RAGOrchestrator = Depends(get_rag_orchestrator),
     multilingual_orchestrator: MultilingualOrchestrator = Depends(get_multilingual_orchestrator),
     idempotency_key_header: Optional[str] = Header(None, alias="Idempotency-Key"),
+    _rate_limit: None = Depends(check_chat_rate_limit),
 ) -> ChatMessageResponse:
     """Executes verified RAG query lifecycle through MultilingualOrchestrator and RAGOrchestrator."""
     logger.info(
@@ -208,15 +214,158 @@ async def post_chat_message(
     )
 
     effective_idempotency_key = idempotency_key_header or payload.idempotency_key
-    try:
-        customer_uuid = uuid.UUID(str(auth.customer_id)) if auth.customer_id else uuid.uuid4()
-    except (ValueError, TypeError, AttributeError):
-        customer_uuid = uuid.uuid4()
 
-    try:
-        session_uuid = uuid.UUID(str(auth.session_id)) if auth.session_id else uuid.uuid4()
-    except (ValueError, TypeError, AttributeError):
-        session_uuid = uuid.uuid4()
+    # =========================================================================
+    # Phase 1: Authoritative Session & Customer Resolution Strategy
+    # =========================================================================
+    if auth.auth_type == "JWT":
+        # Authenticated Staff Caller (AGENT, SUPERVISOR, ADMIN, etc.)
+        raw_tenant = (auth.jwt_claims or {}).get("tenant_id")
+        if not raw_tenant or not isinstance(raw_tenant, str) or not raw_tenant.strip():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Staff authentication token must contain a valid, non-empty tenant_id claim.",
+            )
+        try:
+            staff_tenant = validate_tenant_id(raw_tenant)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid tenant identifier.",
+            )
+
+        is_global_admin = any(
+            r.upper() in {"SUPER_ADMIN", "GLOBAL_ADMIN"}
+            for r in (auth.roles or [])
+        )
+
+        if payload.conversation_id:
+            # Multi-turn continuation on an existing conversation thread
+            conv_stmt = select(Conversation).where(Conversation.id == payload.conversation_id)
+            conv_res = await db.execute(conv_stmt)
+            existing_conv = conv_res.scalar_one_or_none()
+            if not existing_conv:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Conversation not found.",
+                )
+
+            # Strict tenant authorization check for staff caller
+            if not is_global_admin:
+                if not existing_conv.customer_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Conversation not found.",
+                    )
+                cust_res = await db.execute(select(Customer).where(Customer.id == existing_conv.customer_id))
+                cust = cust_res.scalar_one_or_none()
+                cust_tenant = (cust.metadata_ or {}).get("tenant_id") if cust else None
+                if not cust_tenant or cust_tenant != staff_tenant:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Conversation not found.",
+                    )
+
+            session_uuid = existing_conv.session_id
+            customer_uuid = existing_conv.customer_id
+        else:
+            # Initiating a new conversation thread: resolve/create dedicated internal staff test customer & session
+            staff_user_id = str(auth.user_id_or_email)
+            staff_external_id = f"STAFF-USR-{staff_user_id}-{staff_tenant}"
+            cust_stmt = select(Customer).where(Customer.external_id == staff_external_id)
+            cust_res = await db.execute(cust_stmt)
+            staff_cust = cust_res.scalar_one_or_none()
+
+            if not staff_cust:
+                staff_cust = Customer(
+                    external_id=staff_external_id,
+                    email=(auth.jwt_claims or {}).get("email") or f"{staff_user_id}@{staff_tenant}.internal",
+                    full_name=(auth.jwt_claims or {}).get("name") or "Staff Internal Agent",
+                    customer_tier="ENTERPRISE",
+                    metadata_={
+                        "is_staff_internal": True,
+                        "staff_user_id": staff_user_id,
+                        "tenant_id": staff_tenant,
+                    },
+                )
+                db.add(staff_cust)
+                await db.flush()
+
+            now = datetime.now(timezone.utc)
+            staff_sess = None
+
+            if effective_idempotency_key:
+                idem_stmt = select(ChatIdempotencyRecord).where(
+                    ChatIdempotencyRecord.customer_id == staff_cust.id,
+                    ChatIdempotencyRecord.idempotency_key == effective_idempotency_key,
+                )
+                existing_idem = (await db.execute(idem_stmt)).scalar_one_or_none()
+                if existing_idem and existing_idem.session_id:
+                    sess_res = await db.execute(
+                        select(CustomerSession).where(CustomerSession.id == existing_idem.session_id)
+                    )
+                    staff_sess = sess_res.scalar_one_or_none()
+
+            if not staff_sess:
+                active_sess_stmt = (
+                    select(CustomerSession)
+                    .where(
+                        CustomerSession.customer_id == staff_cust.id,
+                        CustomerSession.status == "ACTIVE",
+                        CustomerSession.expires_at > now,
+                    )
+                    .order_by(CustomerSession.last_activity_at.desc())
+                )
+                staff_sess = (await db.execute(active_sess_stmt)).scalars().first()
+
+            if not staff_sess:
+                staff_token = f"staff-sess-{staff_user_id}-{staff_tenant}-{uuid.uuid4().hex[:8]}"
+                staff_sess = CustomerSession(
+                    customer_id=staff_cust.id,
+                    session_token=staff_token,
+                    current_language=payload.preferred_language or "en",
+                    status="ACTIVE",
+                    last_activity_at=now,
+                    expires_at=now + timedelta(days=7),
+                    context_summary=f"Staff session for {staff_user_id} ({staff_tenant})",
+                )
+                db.add(staff_sess)
+                await db.flush()
+
+            session_uuid = staff_sess.id
+            customer_uuid = staff_cust.id
+
+    elif auth.auth_type == "SESSION_TOKEN":
+        # Customer session token authentication (X-Session-Token)
+        try:
+            customer_uuid = uuid.UUID(str(auth.customer_id)) if auth.customer_id else None
+            session_uuid = uuid.UUID(str(auth.session_id)) if auth.session_id else None
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid customer session credentials.",
+            )
+        if not customer_uuid or not session_uuid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Customer session authentication missing valid customer or session reference.",
+            )
+
+        if payload.conversation_id:
+            conv_stmt = select(Conversation).where(Conversation.id == payload.conversation_id)
+            conv_res = await db.execute(conv_stmt)
+            existing_conv = conv_res.scalar_one_or_none()
+            if not existing_conv or existing_conv.customer_id != customer_uuid:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Conversation not found.",
+                )
+            session_uuid = existing_conv.session_id
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unsupported authentication credential type.",
+        )
 
     # Propagate any dependency-overridden RAG orchestrator
     multilingual_orchestrator.rag_orchestrator = orchestrator

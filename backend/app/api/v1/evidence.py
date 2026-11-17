@@ -8,7 +8,7 @@ Exposes REST endpoints for:
 """
 
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 import uuid
 
 from fastapi import (
@@ -17,6 +17,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     status,
@@ -30,6 +31,8 @@ from app.api.deps import (
     get_db,
 )
 from app.core.logging import configure_safe_logger
+from app.core.rate_limiter import check_evidence_rate_limit
+from app.modules.evidence.lifecycle_manager import StorageLifecycleManager
 from app.modules.evidence.schemas import (
     EvidenceDetailResponse,
     EvidenceExtractionResponse,
@@ -73,6 +76,7 @@ async def upload_evidence(
     db: AsyncSession = Depends(get_db),
     correlation_id: str = Depends(get_correlation_id),
     evidence_service: EvidenceService = Depends(get_evidence_service),
+    _rate_limit: None = Depends(check_evidence_rate_limit),
 ) -> EvidenceUploadResponse:
     """Intakes customer-submitted evidence documents.
 
@@ -210,4 +214,74 @@ async def get_evidence_extraction(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error_code": "NOT_FOUND", "message": exc.message},
         )
+
+
+_storage_lifecycle_manager = StorageLifecycleManager()
+
+
+def get_storage_lifecycle_manager() -> StorageLifecycleManager:
+    return _storage_lifecycle_manager
+
+
+@router.post(
+    "/purge-expired",
+    status_code=status.HTTP_200_OK,
+    summary="Purge expired evidence files past 30-day retention ceiling (Admin only)",
+)
+async def purge_expired_evidence(
+    batch_size: int = Query(default=50, ge=1, le=500),
+    include_failed: bool = Query(default=False, description="Whether to include previously failed purge attempts"),
+    auth_context: ResolvedAuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+    lifecycle_manager: StorageLifecycleManager = Depends(get_storage_lifecycle_manager),
+) -> Dict[str, Any]:
+    """Administrative retention purge unlinking expired files and updating status to PURGED."""
+    is_admin = any(r.upper() in ("ADMIN", "SUPER_ADMIN") for r in (auth_context.roles or []))
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error_code": "FORBIDDEN", "message": "Administrative authorization required to execute evidence retention purge."},
+        )
+
+    return await lifecycle_manager.execute_purge_batch(
+        db, batch_size=batch_size, include_failed=include_failed
+    )
+
+
+@router.post(
+    "/reset-failed-purges",
+    status_code=status.HTTP_200_OK,
+    summary="Reset PURGE_FAILED records to allow safe reprocessing (Admin only)",
+)
+async def reset_failed_purges(
+    evidence_id: Optional[str] = Query(default=None, description="Optional specific evidence ID to reset"),
+    auth_context: ResolvedAuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+    lifecycle_manager: StorageLifecycleManager = Depends(get_storage_lifecycle_manager),
+) -> Dict[str, Any]:
+    """Administrative reset for terminal purge failures enabling safe reprocessing."""
+    is_admin = any(r.upper() in ("ADMIN", "SUPER_ADMIN") for r in (auth_context.roles or []))
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error_code": "FORBIDDEN", "message": "Administrative authorization required to reset evidence purge failures."},
+        )
+
+    target_uuid = None
+    if evidence_id:
+        try:
+            target_uuid = uuid.UUID(evidence_id)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error_code": "INVALID_UUID", "message": f"Invalid evidence UUID: '{evidence_id}'"},
+            )
+
+    reset_count = await lifecycle_manager.reset_failed_purges(db, evidence_id=target_uuid)
+    return {
+        "status": "SUCCESS",
+        "reset_count": reset_count,
+        "message": f"Successfully reset {reset_count} evidence record(s) for purge reprocessing.",
+    }
+
 

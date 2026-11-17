@@ -3,7 +3,7 @@
 **Project:** Intelligent Customer Support AI Platform  
 **Architecture:** Modular Monolith (FastAPI + SQLAlchemy 2.0 AsyncIO + PostgreSQL 16 + React 18 TypeScript)  
 **Repository Working Directory:** `c:\Users\bhavs\OneDrive\Desktop\AI-Customer-Support-Platform`  
-**Current Milestone:** Day 10 — Evidence Reconciliation & Intelligent Mismatch Detection (Implemented, Hardened & Audited — 636/636 Passing Tests, 0 Regressions)
+**Current Milestone:** Phase 2.2-B: Wave 2 — Sentiment Tone Adaptation & Evidence Notifications (970/970 Backend Tests, 34/34 Frontend Tests, Verified)
 
 ---
 
@@ -21,6 +21,18 @@ flowchart LR
     D07 --> D08["Day 08<br/>Intelligent Escalation & After-Hours<br/>(COMPLETED)"]
     D08 --> D09["Day 09<br/>Multimodal Evidence Intake & OCR<br/>(COMPLETED)"]
     D09 --> D10["Day 10<br/>Evidence Reconciliation & Mismatch Detection<br/>(COMPLETED)"]
+    D10 --> D11["Day 11<br/>Multimodal Security Guard & Cross-Verification<br/>(COMPLETED)"]
+    D11 --> D12["Day 12<br/>Intelligent Ticket Management Engine<br/>(COMPLETED)"]
+    D12 --> D13["Day 13<br/>Intelligent Ticket Routing & Priority Engine<br/>(COMPLETED)"]
+    D13 --> D14["Day 14<br/>Intelligent Ticket Resolution & Action Orchestration<br/>(COMPLETED)"]
+    D14 --> D15P1["Day 15 Phase 1<br/>Backend Read APIs & Safe Dev Auth<br/>(COMPLETED)"]
+    D15P1 --> D15P2["Day 15 Phase 2<br/>Frontend API Infrastructure & AuthContext<br/>(COMPLETED)"]
+    D15P2 --> D15P3["Day 15 Phase 3<br/>Live Conversations Integration<br/>(COMPLETED)"]
+    D15P3 --> D15P4["Day 15 Phase 4<br/>Tickets View Integration<br/>(COMPLETED)"]
+    D15P4 --> D15P5["Day 15 Phase 5<br/>Escalation Center & Evidence Processing<br/>(COMPLETED)"]
+    D15P5 --> D15P6["Day 15 Phase 6<br/>Analytics, Dashboard & Operational Intelligence<br/>(COMPLETED)"]
+    D15P6 --> D15P7["Day 15 Phase 7<br/>E2E Verification & Production Readiness<br/>(COMPLETED)"]
+    D15P7 --> HARDEN["Production Hardening<br/>Security, Config & Deployment Readiness<br/>(COMPLETED)"]
 ```
 
 ---
@@ -601,4 +613,698 @@ Implemented Day 10 of the engineering roadmap: automated reconciliation engine m
 - **Alembic Migrations:** Revisions `001`, `002`, `003`, `004`, `005` all validated and verified at head on PostgreSQL (including clean downgrade/upgrade round-trip).
 - **Deliverables:** Authored [`docs/development-history/evidence-reconciliation-mismatch-detection-implementation-report.md`](docs/development-history/evidence-reconciliation-mismatch-detection-implementation-report.md).
 - **Status:** **DAY 10 COMPLETED, HARDENED, AUDITED & VERIFIED**.
+
+---
+
+## Day 11 — Multimodal Security Guard & Advanced Evidence Cross-Verification
+
+### 1. Scope & Execution Overview
+Implemented Day 11 of the platform engineering roadmap: defense-in-depth multimodal security guard, advanced multi-document evidence cross-verification, and storage retention lifecycle management. Implements the three mandatory architectural safeguards: (1) calibrated threat model without unrealistic 100% prompt injection detection claims, (2) multi-document distinct transaction verification (two files != two transactions), and (3) auditable, recoverable, idempotent evidence retention purging with PostgreSQL `SKIP LOCKED`.
+
+### 2. Core Implementation Deliverables
+- **Adversarial Multimodal Evidence Security Guard:** Authored [`backend/app/modules/evidence/security_guard.py`](backend/app/modules/evidence/security_guard.py) (`AdversarialEvidenceGuard`) providing:
+  - Unicode canonical normalization, zero-width space/BOM stripping, and Cyrillic/Greek-to-Latin homoglyph mapping.
+  - Multilingual prompt injection heuristics in English, Spanish, French, German, and Hindi (Devanagari and transliterated romanized).
+  - Bounded recursive decoding for Base64, Hexadecimal, and URL-encoded injection strings.
+  - Document metadata security inspection for PDF Document Information dictionaries (`/Title`, `/Subject`, `/Author`) and JPEG EXIF / PNG info dictionaries.
+  - PDF invisible text heuristics detecting suspicious zero-width density.
+  - Markdown remote image exfiltration stripping (`![alt](url) -> [REMOTE_IMAGE_STRIPPED]`) and instruction boundary token neutralization (`<system>`, `[INST]`, `<<SYS>>`, `---BEGIN SYSTEM PROMPT---`).
+  - Conversational customer claim scanning, flagging adversarial claim text before reconciliation.
+- **Advanced Evidence Cross-Verification Engine:** Extended [`backend/app/modules/evidence/reconciler.py`](backend/app/modules/evidence/reconciler.py) and [`backend/app/modules/evidence/reconciliation_service.py`](backend/app/modules/evidence/reconciliation_service.py) providing:
+  - Multi-evidence alignment with `secondary_evidence_id` in request/response schemas.
+  - Duplicate evidence detection via SHA-256 payload hash comparison (`DUPLICATE_EVIDENCE_FILE`).
+  - Strict financial transaction identity checks: rejecting identical transaction references on two different files when claiming double billing.
+  - Verified distinct transaction cross-checks for double-charge claims.
+  - Inter-document contradiction detection (`EVIDENCE_EVIDENCE_CONFLICT`).
+  - Deterministic fuzzy token sort similarity with legal entity suffix normalization (`corp`, `inc`, `ltd`, `llc`, `pvt`).
+  - Itemized `ReceiptLineItem` quantity and unit price verification.
+- **Storage Retention Lifecycle Manager:** Authored [`backend/app/modules/evidence/lifecycle_manager.py`](backend/app/modules/evidence/lifecycle_manager.py) (`StorageLifecycleManager`) providing:
+  - Automated discovery of expired files past the 30-day ceiling (`retention_expires_at <= utc_now()`).
+  - Concurrency-safe row locking via PostgreSQL `with_for_update(skip_locked=True)`.
+  - Strict path containment checks (`.is_relative_to(base_dir)`) aborting path traversal and symlink escapes.
+  - Idempotent disk unlinking (marking absent files `PURGED` cleanly).
+  - Safe error recovery logging (`PURGE_IO_ERROR`, `PURGE_SECURITY_ERROR`).
+- **Administrative Purge REST Endpoint:** Exposed `POST /api/v1/evidence/purge-expired` in [`backend/app/api/v1/evidence.py`](backend/app/api/v1/evidence.py) with RBAC authorization (strictly `ADMIN` and `SUPER_ADMIN` only; returns `403 Forbidden` for customers and agents).
+- **Alembic Migration 006 (`006_multimodal_security_guard`):** Authored and applied [`backend/alembic/versions/006_multimodal_security_guard.py`](backend/alembic/versions/006_multimodal_security_guard.py) adding `purged_at` to `evidence_files` and `secondary_evidence_file_id`, `security_flags` to `evidence_verifications`. Verified with bidirectional upgrade/downgrade round-trip on PostgreSQL.
+
+### 3. Verification & Test Suite Summary
+- **Dedicated Day 11 Test Suite:** [`backend/tests/test_multimodal_security_guard.py`](backend/tests/test_multimodal_security_guard.py): **52 / 52 PASSED** in 63.97s (100% green).
+- **Day 10 Reconciliation Regression Suite:** [`backend/tests/test_evidence_reconciliation.py`](backend/tests/test_evidence_reconciliation.py): **31 / 31 PASSED** in 8.72s.
+- **Day 09 Intake Regression Suite:** [`backend/tests/test_multimodal_evidence_intake.py`](backend/tests/test_multimodal_evidence_intake.py): **23 / 23 PASSED** in 7.85s.
+- **Combined Regression Suite (Day 09 + Day 10):** **54 / 54 PASSED** in 35.67s.
+- **Full Backend Regression Suite:** **693 / 693 PASSED** in 171.57s (zero failures, zero regressions, 100% pass rate).
+- **Alembic Migrations:** Revisions `001` through `007` (`007_evidence_purge_reliability`) all applied and verified at head on PostgreSQL.
+- **Deliverables:** Authored and updated [`docs/development-history/multimodal-security-guard-cross-verification-implementation-report.md`](docs/development-history/multimodal-security-guard-cross-verification-implementation-report.md) and [`docs/development-history/multimodal-security-guard-cross-verification-source-audit.md`](docs/development-history/multimodal-security-guard-cross-verification-source-audit.md).
+- **Status:** **DAY 11 COMPLETED, HARDENED, REMEDIATED, AUDITED & VERIFIED**.
+
+### 4. Day 11 Critical Defect Remediation & Verification Summary
+- **Fix 1 (Double-Charge False MATCH):** Enforced strict transaction identity in [`backend/app/modules/evidence/reconciler.py`](backend/app/modules/evidence/reconciler.py). Missing/ambiguous/identical/invoice-only identifiers return `INSUFFICIENT_EVIDENCE`.
+- **Fix 2 (Lifecycle Worker Integration):** Registered `EvidenceRetentionWorker` in [`backend/app/lifecycle.py`](backend/app/lifecycle.py) with startup recovery sweep, periodic scanning loop, bounded batching, and non-blocking filesystem I/O (`asyncio.to_thread`).
+- **Fix 3 (Bounded Retries & State Machine):** Implemented bounded retries (default 3) transitioning terminal failures to `PURGE_FAILED` in [`backend/app/modules/evidence/lifecycle_manager.py`](backend/app/modules/evidence/lifecycle_manager.py). Created and applied Alembic migration `007_evidence_purge_reliability.py` adding `purge_retry_count`, `last_purge_attempt_at`, and compound index `ix_evidence_files_retention_lookup`. Added `POST /api/v1/evidence/reset-failed-purges` administrative recovery endpoint.
+- **Fix 4 (Double-Charge Semantic Correction):** Resolved order identity semantics: different order IDs (`ORD-1001` vs `ORD-1002`) represent two separate purchases and return `MISMATCH`. Required identical order/obligation + two distinct verified payment references (`TXN-`, `AUTH-`, `PAY-`), plus amount and currency consistency.
+- **Fix 5 (Purge DB Failure Recovery):** Verified the recovery invariant where disk unlink succeeds, database commit fails and rolls back, subsequent retention sweep idempotently recognizes missing file, marks `PURGED`, and leaves retry count at 0.
+- **Fix 6 (FastAPI Lifespan Worker Wiring - F-01):** Integrated `EvidenceRetentionWorker` and `StorageLifecycleManager` into `lifespan(app: FastAPI)` in [`backend/app/main.py`](backend/app/main.py). Added `ENABLE_BACKGROUND_WORKERS` to `Settings` in [`backend/app/core/config.py`](backend/app/core/config.py) for multi-process ASGI architectures. Handled startup sweep errors safely without crashing API initialization, and ensured clean shutdown via `await ret_worker.stop_async()`.
+- **Fix 7 (Financial Verification Hierarchy & Refund Gating - F-02):** Defined `FinancialVerificationLevel` (`EXTRACTED`, `DOCUMENT_CORROBORATED`, `PAYMENT_INDEPENDENTLY_VERIFIED`). Enforced that document-level matches are strictly `DOCUMENT_CORROBORATED`, setting `is_refund_authorized = False` and `requires_authoritative_verification = True`. Never auto-authorizes refunds on customer-provided documents alone.
+- **Fix 8 (Transaction Identifier Type Incompatibility Engine - F-03):** Introduced `TransactionIdentifierType` (`ORDER_ID`, `INVOICE_NUMBER`, `TRANSACTION_ID`, `AUTHORIZATION_CODE`, `PAYMENT_REFERENCE`, `CHARGE_ID`, `UNKNOWN`), `classify_transaction_identifier()`, and `are_identifier_types_compatible()`. Prohibited pairing pre-settlement `AUTHORIZATION_CODE` (`AUTH-`) with settled `TRANSACTION_ID` (`TXN-`) or `CHARGE_ID` (`CHG-`); fails closed as `INSUFFICIENT_EVIDENCE` (`IDENTIFIER_TYPE_INCOMPATIBILITY`).
+
+---
+
+## Day 12 — Intelligent Ticket Management Engine (Task 3: Ticket Synthesis, Completeness & Clarification)
+
+### 1. Scope & Execution Overview
+Implemented Day 12 of the engineering roadmap: automated ticket synthesis from multi-turn conversations and evidence entities, deterministic rule-based completeness scoring across 8 domain categories, intelligent clarification engine with duplicate question prevention and round limiting, formal synthesis lifecycle FSM (`DRAFT` -> `SYNTHESIZING` -> `SYNTHESIZED` -> `NEEDS_INFORMATION` -> `READY_FOR_REVIEW` -> `COMPLETE`), Alembic migration 008, and canonical REST endpoints under `/api/v1/tickets`.
+
+### 2. Core Implementation Deliverables
+- **Intelligent Ticket Synthesis Engine:** Authored [`backend/app/modules/ticketing/ticket_synthesis.py`](backend/app/modules/ticketing/ticket_synthesis.py) (`TicketSynthesisEngine`) with:
+  - Multi-provider LLM prompt construction generating structured JSON with robust markdown code fence stripping.
+  - Zero-dependency heuristic fallback (`_heuristic_extract`) with regex extractors for orders, invoices, tracking IDs, amounts, currencies, and problem categories.
+  - Automatic PCI-DSS credit card and PII masking via `PIIMaskingEngine`.
+  - Contradiction detection between user claims.
+  - Field-level provenance tracking (`explicit` vs `inferred`).
+- **Deterministic Completeness Evaluator:** Authored [`backend/app/modules/ticketing/ticket_completeness.py`](backend/app/modules/ticketing/ticket_completeness.py) (`TicketCompletenessEvaluator`) with:
+  - Rigorous requirement specifications across 8 issue categories (`delivery_issue`, `payment_issue`, `damaged_product`, `account_issue`, `product_quality`, `cancellation_return`, `technical_support`, `general`).
+  - Weighted completeness scoring (70% mandatory weight, 30% recommended weight) where 100% of mandatory fields must pass for `is_complete = True`.
+  - Actionable violation diagnostics (`CompletenessViolation`).
+- **Intelligent Clarification Engine:** Authored [`backend/app/modules/ticketing/ticket_clarification.py`](backend/app/modules/ticketing/ticket_clarification.py) (`TicketClarificationEngine`) with:
+  - Targeted question formulation strictly for missing mandatory fields.
+  - Cross-round question deduplication suppressing previously asked or resolved fields.
+  - Strict batch sizing ($\le 3$ questions per round) and round ceiling ($\le 5$ rounds, raising `ClarificationLimitReachedError`).
+  - Ambiguous response detection (`"idk"`, `"n/a"`, or short strings).
+  - Clean response absorption updating synthesis state and re-evaluating completeness.
+- **Ticket Lifecycle & Service Orchestration:** Authored [`backend/app/modules/ticketing/ticket_service.py`](backend/app/modules/ticketing/ticket_service.py) (`TicketSynthesisService`) with:
+  - Formal synthesis state transitions decoupled from operational SLA status (`Ticket.synthesis_status` vs `Ticket.status`).
+  - Concurrency-safe PostgreSQL row locking (`with_for_update()`).
+  - Multi-tenant tenant ID boundary enforcement.
+  - Immutable audit trail logging via `TicketEvent`.
+- **Database Schema & Domain Models:**
+  - Authored [`backend/app/models/ticket_synthesis.py`](backend/app/models/ticket_synthesis.py) (`TicketSynthesis` 1:1 with `Ticket`, `TicketClarificationRequest` 1:N with `Ticket`).
+  - Updated [`backend/app/models/ticket.py`](backend/app/models/ticket.py) and [`backend/app/models/__init__.py`](backend/app/models/__init__.py).
+  - Authored and applied Alembic migration [`backend/alembic/versions/008_intelligent_ticket_synthesis.py`](backend/alembic/versions/008_intelligent_ticket_synthesis.py).
+- **REST API Endpoints:** Authored [`backend/app/api/v1/tickets.py`](backend/app/api/v1/tickets.py) and mounted under `/api/v1/tickets` in [`backend/app/api/v1/__init__.py`](backend/app/api/v1/__init__.py):
+  - `POST /api/v1/tickets/synthesize`
+  - `GET /api/v1/tickets/{id}/synthesis`
+  - `POST /api/v1/tickets/{id}/synthesis/completeness`
+  - `POST /api/v1/tickets/{id}/synthesis/clarify`
+  - `POST /api/v1/tickets/{id}/synthesis/respond`
+  - `GET /api/v1/tickets/{id}/synthesis/clarifications`
+  - `POST /api/v1/tickets/{id}/synthesis/complete`
+
+### 3. Verification & Test Suite Summary
+- **Dedicated Day 12 Test Suite:** [`backend/tests/test_intelligent_ticket_management.py`](backend/tests/test_intelligent_ticket_management.py): **35 / 35 PASSED** in 38.66s.
+- **Evidence Engine Regression Suites (Days 09–11):** **106 / 106 PASSED** in 39.60s.
+- **Full Backend Platform Regression Suite:** **728 / 728 PASSED** in 173.80s (zero failures, zero regressions, 100% pass rate).
+- **Alembic Migrations:** Revisions `001` through `008` applied and verified at head on PostgreSQL (clean upgrade, downgrade, and re-upgrade round-trips verified).
+- **Deliverables:** Authored [`docs/development-history/intelligent-ticket-management-implementation-report.md`](docs/development-history/intelligent-ticket-management-implementation-report.md).
+- **Status:** **DAY 12 COMPLETED, HARDENED, AUDITED & VERIFIED**.
+
+---
+
+## Day 13 — Intelligent Ticket Routing & Explainable Priority Engine
+
+### 1. Scope & Execution Overview
+Implemented an explainable, deterministic priority classification engine and an intelligent, transaction-safe routing engine for support tickets. Reused existing models, services, indexes, and SLA calendars without speculative code or unnecessary dependencies.
+
+### 2. Core Modules & Enhancements
+- **Deterministic Priority Engine:** Authored [`backend/app/modules/ticketing/priority_engine.py`](backend/app/modules/ticketing/priority_engine.py) (`PriorityEngine`) with:
+  - Deterministic priority scoring (1.0–5.0) mapped to `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`, `URGENT`.
+  - Category criticality and floor enforcement (`account_issue` with compromise has a `CRITICAL` floor; `general` base 1.5).
+  - Business impact / tier weighting: `VIP` (+0.5 boost, floor `MEDIUM`), `ENTERPRISE` (+0.8 boost, floor `MEDIUM`).
+  - Financial anti-hallucination verification hierarchy: customer claims alone never establish verified financial loss; only `DOCUMENT_CORROBORATED` evidence with verified non-zero variance triggers financial elevation (+0.8, floor `HIGH`). Unresolved contradictions suppress financial boosts.
+  - SLA proximity & breach: proximity (<= 30 min) adds +0.8 boost; breach adds +2.0 boost with `URGENT` floor.
+  - Strict SLA timer preservation: priority evaluation never alters `sla_target_minutes`, `sla_warning_at`, `sla_breach_at`, `sla_paused_at`, or `total_paused_duration_seconds`.
+  - Structured, verifiable audit trail facts (`supporting_facts`).
+- **Intelligent Routing Engine & Shared Capacity Locker:** Authored [`backend/app/modules/ticketing/routing_engine.py`](backend/app/modules/ticketing/routing_engine.py) (`RoutingEngine`) with:
+  - Category-to-department resolution with canonical aliases (`payment_issue`/`billing_issue` -> `Billing`, `delivery_issue`/`cancellation_return` -> `Logistics`, `technical_support`/`product_defect` -> `Technical`, `security_incident`/`account_issue` -> `Security`/`Account`, `general` -> `Support`).
+  - Multi-factor candidate ranking: role filtering (`AGENT`, `SUPERVISOR`, `ADMIN`), skill matching score against department requirements, and active load balancing. Deterministic tie-breaker on `User.id`.
+  - Operating hours & on-call dispatch integration: checks operating schedule via existing `evaluate_after_hours()` and filters by `is_on_call` during off-hours.
+  - Team queue fallback: when all candidates in a department are at capacity or absent, routing falls back safely to department team queue (`routing_status="TEAM_QUEUED"`, `assigned_team=department`, `assigned_agent_id=None`).
+  - Transaction-safe capacity locking (`acquire_agent_capacity_lock`): locks candidate `User` row via `SELECT ... FOR UPDATE`, checks active workload inside transaction using the existing `idx_tickets_assigned_status` index across active statuses (`OPEN`, `IN_PROGRESS`, `PENDING_CUSTOMER`, `ESCALATED`), and raises `AgentCapacityExceededError`.
+- **Ticket Routing Service:** Authored [`backend/app/modules/ticketing/routing_service.py`](backend/app/modules/ticketing/routing_service.py) (`TicketRoutingService`) with:
+  - Priority evaluation, automatic routing, manual assignment with supervisor capacity override, routing audit history, and department workload breakdown.
+  - Rejection of customer tokens on operational routing and priority manipulation (403 Forbidden). Customer view restricted to own ticket history.
+- **Database Schema Evolution (Alembic Migration 009):**
+  - Authored [`backend/alembic/versions/009_ticket_routing_priority.py`](backend/alembic/versions/009_ticket_routing_priority.py) adding `assigned_team` (VARCHAR(100), indexed), `priority_explanation` (TEXT), and `routing_status` (VARCHAR(50), indexed).
+  - Updated [`backend/app/models/ticket.py`](backend/app/models/ticket.py) to declare columns.
+  - Verified clean bidirectional migration round-trip on live PostgreSQL 16.
+- **REST API Endpoints:** Updated [`backend/app/api/v1/tickets.py`](backend/app/api/v1/tickets.py):
+  - `POST /api/v1/tickets/{id}/priority/evaluate` (staff only)
+  - `POST /api/v1/tickets/{id}/route` (staff only)
+  - `POST /api/v1/tickets/{id}/assign` (staff only, with capacity enforcement & override)
+  - `GET /api/v1/tickets/{id}/routing-history` (staff and ticket owner)
+  - `GET /api/v1/tickets/teams/workload` (supervisor and admin only)
+
+### 3. Verification & Test Suite Summary
+- **Dedicated Day 13 Test Suite:** [`backend/tests/test_intelligent_ticket_routing.py`](backend/tests/test_intelligent_ticket_routing.py): **21 / 21 PASSED** in 8.83s.
+- **PostgreSQL Concurrency Test:** Proved transaction-safe capacity locking under concurrent execution using `asyncio.gather` against live PostgreSQL.
+- **Milestone Regression Suites (Days 09–12):** **141 / 141 PASSED** in 12.28s.
+- **Full Backend Platform Regression Suite:** **749 / 749 PASSED** in 120.23s (100% green, zero regressions).
+- **Alembic Migrations:** Revisions `001` through `009` applied and verified at head on PostgreSQL.
+- **Deliverables:** Authored [`docs/development-history/intelligent-ticket-routing-priority-implementation-report.md`](docs/development-history/intelligent-ticket-routing-priority-implementation-report.md) and updated [`docs/development-history/README.md`](docs/development-history/README.md).
+- **Status:** **DAY 13 COMPLETED, HARDENED, AUDITED & VERIFIED**.
+
+---
+
+## Day 14 — Intelligent Customer Support Resolution & Action Orchestration Engine
+
+### 1. Scope & Execution Overview
+Implemented an explainable customer support resolution engine and a transaction-safe action orchestration engine. Designed around 9 deterministic category playbooks, transactional row-locking (`SELECT ... FOR UPDATE`), idempotency guarantees, bounded retries, and strict financial & security human approval gates. Reused existing models, ticket events, and routing services without speculative dependencies.
+
+### 2. Core Modules & Enhancements
+- **Resolution Playbook System (9 Domains):** Authored [`backend/app/modules/ticketing/resolution_playbooks.py`](backend/app/modules/ticketing/resolution_playbooks.py) with deterministic playbooks:
+  - `order_status_delivery`: Automated tracking check and customer communication.
+  - `delayed_delivery`: Carrier exception check, warehouse notification, tier-based goodwill credit ($5-$15).
+  - `cancellation_requests`: Unfulfilled order cancellation with automated refund trigger; shipped orders blocked and routed to logistics.
+  - `return_replacement`: 30-day RMA window validation, return label generation, replacement orders.
+  - `refund_status`: Safe status inquiry with settlement ETA without re-authorizing transactions.
+  - `payment_discrepancy` (Sensitive Financial): Strict financial verification hierarchy requiring `DOCUMENT_CORROBORATED` evidence with verified non-zero variance. Customer claims alone never authorize payouts. `ISSUE_REFUND` action marked `is_sensitive=True` and `requires_approval=True`. Contradictions abort automation and escalate.
+  - `account_access` (Sensitive Security): Automated auth links; account suspension marked sensitive and requires supervisor approval if compromise indicators exist.
+  - `technical_support`: Known issue checks, diagnostic queries, Tier 2 escalation.
+  - `general_inquiry`: Knowledge base search and customer update.
+- **Resolution Engine:** Authored [`backend/app/modules/ticketing/resolution_engine.py`](backend/app/modules/ticketing/resolution_engine.py) (`ResolutionEngine`) to evaluate playbooks against synthesized ticket facts, completeness scores, customer tier, SLA, and evidence reconciliation.
+- **Action Orchestrator:** Authored [`backend/app/modules/ticketing/action_orchestrator.py`](backend/app/modules/ticketing/action_orchestrator.py) (`ActionOrchestrator`):
+  - Row-level concurrency locking via `SELECT ... FOR UPDATE` on `ResolutionAction`.
+  - Deterministic idempotency via composite unique key `action_key` (`uq_resolution_action_key`). Cached successful results returned immediately.
+  - Approval precondition enforcement raising `ActionNotApprovedError` for unapproved sensitive actions.
+  - Bounded retry limits tracking `execution_attempts` against `max_attempts`.
+  - Honest simulated execution generating internal ledger references without claiming unbacked live gateway settlements.
+- **Resolution Service & Independent Verification:** Authored [`backend/app/modules/ticketing/resolution_service.py`](backend/app/modules/ticketing/resolution_service.py) (`TicketResolutionService`):
+  - Manages proposal, supervisor approvals, rejections, execution, and verification.
+  - Direct async queries (`select(ResolutionAction)...`) preventing async greenlet lazy-load errors.
+  - Independent verification gate: validates all actions `SUCCEEDED`, evidence verified, and contradictions absent. Sets ticket to `RESOLVED` on success; marks `FAILED` and triggers Day 13 `routing_service.route_ticket()` for senior human escalation on failure.
+  - Emits immutable `TicketEvent` audit records for every lifecycle transition.
+  - Strict SLA timer preservation: leaves `sla_target_minutes`, `sla_warning_at`, `sla_breach_at`, `sla_paused_at`, and `total_paused_duration_seconds` immutable.
+- **Database Schema Evolution (Alembic Migration 010):**
+  - Authored [`backend/alembic/versions/010_ticket_resolution.py`](backend/alembic/versions/010_ticket_resolution.py) (`010_ticket_resolution`).
+  - Added `tickets.resolution_status` (`VARCHAR(50)`, indexed, default `'UNRESOLVED'`).
+  - Created `ticket_resolutions` table with cascading foreign key to `tickets.id`.
+  - Created `resolution_actions` table with `uq_resolution_action_key` unique constraint and cascading foreign key to `ticket_resolutions.id`.
+  - Granted least-privilege permissions (`SELECT, INSERT, UPDATE, DELETE`) to `app_user`.
+  - Verified clean bidirectional migration round-trip on live PostgreSQL 16.
+- **Domain Models:** Authored [`backend/app/models/ticket_resolution.py`](backend/app/models/ticket_resolution.py) declaring `TicketResolution` and `ResolutionAction`. Linked to `Ticket` in [`backend/app/models/ticket.py`](backend/app/models/ticket.py).
+- **REST API Endpoints:** Integrated 8 endpoints in [`backend/app/api/v1/tickets.py`](backend/app/api/v1/tickets.py):
+  - `POST /api/v1/tickets/{id}/resolution/evaluate` (staff only)
+  - `GET /api/v1/tickets/{id}/resolution` (staff or owning customer)
+  - `POST /api/v1/tickets/{id}/resolution/actions` (staff only)
+  - `POST /api/v1/tickets/{id}/resolution/actions/{action_id}/approve` (supervisor/admin only)
+  - `POST /api/v1/tickets/{id}/resolution/actions/{action_id}/reject` (supervisor/admin only)
+  - `POST /api/v1/tickets/{id}/resolution/actions/{action_id}/execute` (staff only)
+  - `POST /api/v1/tickets/{id}/resolution/verify` (staff only)
+  - `GET /api/v1/tickets/{id}/resolution/history` (staff or owning customer)
+
+### 3. Smart INR Goodwill Credit Policy Refinement
+- **India-First Tier Compensation:** Authored [`backend/app/modules/ticketing/goodwill_policy.py`](backend/app/modules/ticketing/goodwill_policy.py):
+  - Standard Tier: default ₹499.00, maximum cap ₹999.00.
+  - VIP Tier: default ₹799.00, maximum cap ₹1,499.00.
+  - Enterprise Tier: configurable organization-specific policy clamped by safety ceiling (default ₹999.00, max ₹2,499.00).
+  - 10% Order-Value Cap: strictly caps credit at `min(proposed_base, 0.10 * verified_order_value, tier_max)`. Fails closed if order value is unverified/unknown.
+  - Duplicate Incident Protection: blocks repeat payouts for the same order/incident (`DUPLICATE_COMPENSATION_PROHIBITED`).
+  - 4-Tier Approval Matrix: `<= ₹499.00` automated/agent, `₹500.00–₹999.00` supervisor, `₹1,000.00–₹1,499.00` senior supervisor, `> ₹1,499.00` admin manual review.
+  - Exact Decimal Arithmetic: uses Python standard library `Decimal` rounded to two decimal places (`ROUND_HALF_UP`) with ISO-4217 `"INR"` currency. Zero floats in financial logic.
+  - Honest Simulated Execution: emits `SIM-INR-CREDIT-...` marked as internal ledger simulation without claiming live gateway settlements.
+
+### 4. Verification & Test Suite Summary
+- **Dedicated Day 14 Test Suite:** [`backend/tests/test_intelligent_ticket_resolution.py`](backend/tests/test_intelligent_ticket_resolution.py): **40 / 40 PASSED** in 12.40s (includes 10 dedicated Smart INR goodwill credit unit and integration tests).
+- **PostgreSQL Concurrency Test:** Proved transaction-safe action execution locking under concurrent execution using 5 simultaneous `asyncio.gather` workers against live PostgreSQL.
+- **Milestone Regression Suites (Days 09–14):** **230 / 230 PASSED** in 21.78s.
+- **Full Backend Platform Regression Suite:** **790 / 790 PASSED** in 131.14s (100% green, zero failures, zero errors, zero regressions).
+- **Alembic Migrations:** Revisions `001` through `010` applied and verified at head on PostgreSQL.
+- **Deliverables:** Authored [`docs/development-history/intelligent-ticket-resolution-implementation-report.md`](docs/development-history/intelligent-ticket-resolution-implementation-report.md) and updated [`docs/development-history/README.md`](docs/development-history/README.md).
+- **Status:** **DAY 14 COMPLETED, HARDENED, AUDITED & VERIFIED**.
+
+---
+
+## Day 15 — Frontend–Backend Integration: Phase 1 (Backend Read APIs & Safe Dev Auth)
+
+### 1. Scope & Execution Overview
+Implemented all core backend read APIs and development persona authentication required to connect the modular monolith with the React 18 frontend:
+- Paginated ticket read APIs with deterministic ordering and multi-tenant customer isolation.
+- Conversational dialog and chronological message history endpoints.
+- Safe, development-only persona authentication (`/dev-personas`, `/dev-token`, `/me`) backed by authentic PostgreSQL entities.
+- Fail-closed production guards preventing privileged token issuance outside development.
+
+### 2. Architectural Deliverables
+- **Ticket Read Endpoints:** Implemented in [`backend/app/api/v1/tickets.py`](backend/app/api/v1/tickets.py):
+  - `GET /api/v1/tickets`: Paginated ticket listing with `status`, `priority`, `category`, and `customer_id` filters. Enforces deterministic ordering (`created_at.desc(), id.asc()`). Enforces multi-tenancy: customer session callers see only their own tickets.
+  - `GET /api/v1/tickets/{id}`: Detailed ticket view with complete SLA metrics, priority explanation, routing status, and resolution status. Fails closed with HTTP 404 on unowned tickets to prevent ID enumeration.
+- **Conversation & Message Read Endpoints:** Implemented in [`backend/app/api/v1/conversations.py`](backend/app/api/v1/conversations.py):
+  - `GET /api/v1/conversations`: Paginated conversation listing with deterministic ordering (`last_message_at.desc(), id.asc()`) and customer isolation.
+  - `GET /api/v1/conversations/{id}`: Single conversation detail retrieval with ownership verification.
+  - `GET /api/v1/conversations/{id}/messages`: Chronologically ordered dialog messages (`created_at.asc(), id.asc()`) returning PII-masked content for compliance.
+- **Safe Development Authentication:** Implemented in [`backend/app/api/v1/auth.py`](backend/app/api/v1/auth.py):
+  - `GET /api/v1/auth/dev-personas`: Lists 5 standard development personas (Alice Customer, Bob VIP Customer, Agent Alice, Supervisor Dan, Admin).
+  - `POST /api/v1/auth/dev-token`: Issues authentic, verifiable PostgreSQL credentials (`CustomerSession` tokens for customers; signed HS256 JWTs for staff with real RBAC roles).
+  - `GET /api/v1/auth/me`: Authenticated caller profile check.
+  - Production Fail-Closed Guard: Returns HTTP 404 when `settings.ENVIRONMENT != 'development'` or `settings.ENABLE_DEV_AUTH_ENDPOINTS = False`.
+- **Router Aggregator:** Registered `auth_router` and `conversations_router` under `/api/v1` in [`backend/app/api/v1/__init__.py`](backend/app/api/v1/__init__.py).
+
+### 3. Verification & Test Suite Summary
+- **Dedicated Phase 1 Test Suite:** [`backend/tests/test_phase1_read_apis.py`](backend/tests/test_phase1_read_apis.py): **17 / 17 PASSED** in 23.08s.
+- **Full Backend Platform Regression Suite:** **807 / 807 PASSED** in 173.26s (100% green, 0 failures, 0 errors, 0 regressions).
+- **Workspace Preservation:** All 11 modified frontend files, untracked components, and `.gitignore` updates preserved 100% intact. Zero files staged or committed.
+- **Deliverables:** Authored [`docs/development-history/frontend-backend-integration-phase1-report.md`](docs/development-history/frontend-backend-integration-phase1-report.md).
+- **Status:** **DAY 15 PHASE 1 COMPLETED, AUDITED & VERIFIED**.
+
+---
+
+## Day 15 — Frontend–Backend Integration: Phase 2 (Frontend API Infrastructure & AuthContext)
+
+### 1. Scope & Execution Overview
+Implemented the frontend communication layer and development persona authentication lifecycle connecting React 18 TypeScript to the modular monolith:
+- Centralized Axios API client with strict identity mutual exclusivity and correlation tracing.
+- React Authentication Context discovering, authenticating, and persisting development personas.
+- Compact glassmorphism persona selector dropdown integrated into `TopBar.tsx`.
+- Centralized HTTP 401 automatic session purge, 403 pass-through, and production environment guards.
+
+### 2. Architectural Deliverables
+- **Centralized API Client:** Authored [`frontend/src/services/api.ts`](frontend/src/services/api.ts):
+  - Invariant: Enforces strict mutual exclusivity between `X-Session-Token` (customer) and `Authorization: Bearer <token>` (staff).
+  - Tracing: Automatically attaches `X-Correlation-ID` and `X-Request-ID` to all outgoing requests.
+  - Interceptors: Handles 401 Unauthorized via registered `onUnauthorized` handler to purge stale credentials; handles 403 Forbidden without destroying valid credentials.
+  - Domain Service Wrappers: Exported `authApi`, `ticketsApi`, and `conversationsApi`.
+- **Authentication Context:** Authored [`frontend/src/context/AuthContext.tsx`](frontend/src/context/AuthContext.tsx):
+  - Manages reactive identity state (`activeSession`, `currentUser`, `devPersonas`, `isLoading`, `error`, `isDevAuthAvailable`).
+  - Implements `switchPersona(personaKey)` requesting authentic credentials via `/auth/dev-token` and verifying via `/auth/me`.
+  - Persists selected development persona safely in `localStorage` under `ai_support_dev_auth`.
+  - Production Guard: Evaluates `import.meta.env.DEV`; suppresses development persona discovery and token generation in production builds.
+- **TopBar UI Integration:** Updated [`frontend/src/components/layout/TopBar.tsx`](frontend/src/components/layout/TopBar.tsx):
+  - Integrated interactive persona switcher dropdown displaying active persona name, tier/role badge, and switching states.
+  - Preserved existing design, liquid glass styling, health indicator, and theme toggling.
+  - Production Fallback: Renders static verified role badge when dev auth is unavailable or in production.
+- **Root Provider Mounting:** Mounted `<AuthProvider>` inside `<ThemeProvider>` in [`frontend/src/App.tsx`](frontend/src/App.tsx).
+- **TypeScript Environment Reference:** Authored [`frontend/src/vite-env.d.ts`](frontend/src/vite-env.d.ts) for `vite/client` typing.
+
+### 3. Verification & Test Suite Summary
+- **Frontend Test Suite:** [`frontend/tests/api_auth.test.ts`](frontend/tests/api_auth.test.ts): **9 / 9 PASSED** in 348ms (testing mutual exclusivity, interceptors, correlation IDs, storage persistence, 401/403 handling, and role mappings).
+- **Frontend Build & TypeScript Checks:** `npm --prefix frontend run build` succeeded cleanly in 876ms with zero compilation errors.
+- **Backend Platform Regression Suite:** **807 / 807 PASSED** in 138.51s (100% green, zero failures, zero errors, zero regressions).
+- **Workspace Preservation:** All pending frontend modifications preserved untouched; zero files staged or committed.
+- **Deliverables:** Authored [`docs/development-history/frontend-backend-integration-phase2-report.md`](docs/development-history/frontend-backend-integration-phase2-report.md).
+- **Status:** **DAY 15 PHASE 2 COMPLETED, AUDITED & VERIFIED**.
+
+---
+
+## Day 15 — Frontend–Backend Integration: Phase 3 (Live Conversations Integration)
+
+### 1. Scope & Execution Overview
+Replaced all hardcoded mock conversation threads and manual token inputs in `ConversationsView.tsx` with authoritative backend data flows while strictly preserving liquid glassmorphism styling:
+- Live conversation thread listing via `GET /api/v1/conversations`.
+- Message history retrieval via `GET /api/v1/conversations/{id}/messages` with PII-masked content and sender classification.
+- Live chat message generation via `POST /api/v1/chat/message` with verified policy citations, multi-turn sequence numbers, and client cancellation.
+- Real-time ticket synthesis and clarification orchestration panel (`GET /tickets/{id}/synthesis`, `GET /tickets/{id}/synthesis/clarifications`, `POST /tickets/{id}/synthesis/respond`, `POST /tickets/synthesize`, and `POST /tickets/{id}/synthesis/complete`).
+
+### 2. Architectural Deliverables
+- **Centralized API Service Extensions:** Updated [`frontend/src/services/api.ts`](frontend/src/services/api.ts):
+  - Authored `chatApi.sendMessage` with zero-trust payload enforcement (prohibits client role/tier overrides).
+  - Extended `ticketsApi` with `synthesizeTicket`, `getSynthesis`, `getClarifications`, `generateClarification`, `respondToClarification`, and `markSynthesisComplete`.
+  - Added TypeScript interfaces for `ChatMessageRequest`, `ChatMessageResponse`, `ChatMessageData`, `CitationDTO`, `SynthesisDetailResponse`, `ClarificationListItem`, and `ClarificationRespondResponse`.
+- **Conversations View Overhaul:** Refactored [`frontend/src/pages/ConversationsView.tsx`](frontend/src/pages/ConversationsView.tsx):
+  - Replaced mock threads with live backend conversations list with turn count, language, status, and escalation badges.
+  - Added "+ New" button for seamless creation of unlinked draft conversations with dynamic thread adoption upon first message.
+  - Eliminated manual session token input; identity is cleanly derived from `AuthContext` and attached by Axios interceptors.
+  - Rendered grounded policy citations in high-contrast cards with document title, code, and excerpt.
+  - Implemented collapsible glassmorphism Ticket Synthesis & Clarification drawer with completeness score progress bar, missing fields chips, interactive clarification question responses, and staff completion button.
+- **Badge Component Extension:** Updated [`frontend/src/components/common/Badge.tsx`](frontend/src/components/common/Badge.tsx) to accept custom inline `style?: React.CSSProperties`.
+
+### 3. Verification & Test Suite Summary
+- **Frontend Integration Test Suite:** Authored [`frontend/tests/conversations_integration.test.ts`](frontend/tests/conversations_integration.test.ts). Full frontend test suite: **14 / 14 PASSED** in 335ms (100% green, 0 failures).
+- **Frontend Build & TypeScript Checks:** `npm --prefix frontend run build` succeeded cleanly in 812ms with zero errors.
+- **Backend Platform Regression Suite:** Verified 807 / 807 baseline.
+- **Workspace Preservation:** All pending frontend modifications and `.gitignore` preserved intact; zero files staged or committed.
+- **Deliverables:** Authored [`docs/development-history/frontend-backend-integration-phase3-report.md`](docs/development-history/frontend-backend-integration-phase3-report.md).
+- **Status:** **DAY 15 PHASE 3 COMPLETED, AUDITED & VERIFIED**.
+
+---
+
+## Day 15 — Frontend–Backend Integration: Phase 4 (Tickets View Integration)
+
+### 1. Scope & Execution Overview
+Replaced all simulated ticket cards in `TicketManagementView.tsx` with live backend integration across the full ticket lifecycle:
+- Live ticket queue with server-side pagination, multi-attribute filtering (`status`, `priority`, `category`), and customer multi-tenancy isolation.
+- Calendar-aware SLA tracking and countdowns (with paused and breached states).
+- Slide-over ticket detail inspector with masked summary, original intake, and SLA timestamps.
+- Intelligent routing workflows: priority evaluation with explainable facts, auto-routing to department queues with candidate counts, manual assignment with capacity limits and supervisor overrides, and department workload breakdown.
+- Audited resolution playbook orchestration: playbook evaluation, proposed actions with approval/rejection justification, parameter updating (with security invalidation), single action execution, resolution verification, and immutable audit trails.
+
+### 2. Architectural Deliverables
+- **Pre-Phase 4 Backup & Verification:** Created verifiable pre-Phase 4 workspace backup at `..\ai_customer_support_backups\ai_customer_support_pre_phase4_workspace.zip` (1,527,050 bytes, 322 files) and Git bundle at `..\ai_customer_support_backups\ai_customer_support_pre_phase4_git.bundle` (899,394 bytes).
+- **Centralized API Service Extensions:** Updated [`frontend/src/services/api.ts`](frontend/src/services/api.ts):
+  - Added TypeScript interfaces: `PriorityEvaluateResponse`, `RouteTicketResponse`, `AssignTicketRequest`, `AssignTicketResponse`, `RoutingHistoryResponse`, `TeamWorkloadResponse`, `EvaluateResolutionResponse`, `ResolutionActionItem`, `ProposeActionRequest`, `ExecuteActionResponse`, `VerifyResolutionResponse`, `ResolutionHistoryResponse`.
+  - Added methods to `ticketsApi`: `evaluatePriority`, `routeTicket`, `assignTicket`, `getRoutingHistory`, `getTeamsWorkload`, `evaluateResolution`, `getResolution`, `proposeAction`, `approveAction`, `rejectAction`, `updateActionParams`, `executeAction`, `verifyResolution`, `getResolutionHistory`.
+- **Tickets View Overhaul:** Refactored [`frontend/src/pages/TicketManagementView.tsx`](frontend/src/pages/TicketManagementView.tsx):
+  - Integrated live queue with status & priority pills, page controls, and refresh.
+  - Slide-over detail drawer with 3 tabs: "Overview & SLA", "Routing & Workload", and "Resolution Playbook".
+  - Strict RBAC barriers: customers view only their tickets and cannot trigger staff actions; staff/supervisors have granular controls.
+
+### 3. Verification & Test Suite Summary
+- **Frontend Integration Test Suite:** Authored [`frontend/tests/tickets_integration.test.ts`](frontend/tests/tickets_integration.test.ts). Full frontend test suite: **21 / 21 PASSED** in 445ms across 3 suites.
+- **Frontend Build & TypeScript Checks:** `npm --prefix frontend run build` succeeded cleanly in 847ms with zero compilation errors.
+- **Backend Platform Regression Suite:** Verified 807 / 807 baseline.
+- **Workspace Preservation:** All pending frontend modifications, custom components, and `.gitignore` preserved intact; zero files staged or committed.
+- **Deliverables:** Authored [`docs/development-history/frontend-backend-integration-phase4-report.md`](docs/development-history/frontend-backend-integration-phase4-report.md).
+- **Status:** **DAY 15 PHASE 4 COMPLETED, AUDITED & VERIFIED**.
+
+---
+
+## Day 15 — Frontend–Backend Integration: Phase 5 (Escalation Center & Evidence Processing Integration)
+
+### 1. Scope & Execution Overview
+Replaced all simulated escalation and evidence mock cards with live backend integration:
+- Live operational escalation center (`EscalationCenterView.tsx`) with after-hours business hours check, high-risk safety alarm counter, immutable escalation audit trail, interactive turn evaluation modal, and Rule B batch scan trigger.
+- Multimodal evidence vault & staging (`EvidenceProcessingView.tsx`) with client/server magic-byte validation (PDF $\le$ 10 pages, PNG, JPG, WEBP $\le$ 15MB), SHA-256 integrity digest, 30-day retention tracking, and structured OCR entity extraction.
+- Intelligent claim reconciliation engine (`/evidence/reconcile`) evaluating customer claims against document evidence, computing match verdicts (`MATCH`, `CONFLICT`), and field comparisons.
+- **Financial Trust Hierarchy Invariant:** Hard-enforced that customer-uploaded documents are classified as `DOCUMENT_CORROBORATED` and **never auto-authorize financial refunds** (`is_refund_authorized: false`, `requires_authoritative_verification: true`).
+- Administrative retention purge management panel with confirmation modal and PostgreSQL `SKIP LOCKED` protection.
+
+### 2. Architectural Deliverables
+- **Pre-Phase 5 Backup & Verification:** Created verifiable workspace ZIP at `..\ai_customer_support_backups\ai_customer_support_pre_phase5_workspace.zip` (1,548,711 bytes, 326 files) and Git bundle at `..\ai_customer_support_backups\ai_customer_support_pre_phase5_git.bundle` (899,394 bytes).
+- **Centralized API Service Extensions:** Updated [`frontend/src/services/api.ts`](frontend/src/services/api.ts):
+  - Added TypeScript interfaces: `EscalationEvaluateRequest`, `EscalationEvaluateResponse`, `AfterHoursStatusResponse`, `EscalationAuditItem`, `ScanUnresolvedResponse`, `ReceiptLineItem`, `StructuredInvoiceData`, `EvidenceUploadResponse`, `EvidenceDetailResponse`, `EvidenceExtractionResponse`, `ReconciliationRequest`, `ReconciliationResponse`, `PurgeResult`.
+  - Added API service modules: `escalationApi` (`getAfterHoursStatus`, `listAudits`, `evaluateEscalation`, `scanUnresolved`), `evidenceApi` (`uploadEvidence`, `getEvidence`, `getEvidenceStatus`, `getEvidenceExtraction`, `purgeExpired`, `resetFailedPurges`), and `reconciliationApi` (`reconcile`, `getVerification`).
+- **Escalation Center View Overhaul:** Refactored [`frontend/src/pages/EscalationCenterView.tsx`](frontend/src/pages/EscalationCenterView.tsx) with live operational hours, high-risk counters, audit logs with trigger filtering, modal turn evaluation, and Rule B scan triggering.
+- **Evidence Processing View Overhaul:** Refactored [`frontend/src/pages/EvidenceProcessingView.tsx`](frontend/src/pages/EvidenceProcessingView.tsx) with drag & drop file upload, client size and MIME checks, OCR entity extraction, claim reconciliation, and admin purge controls.
+
+### 3. Verification & Test Suite Summary
+- **Frontend Integration Test Suite:** Authored [`frontend/tests/escalations_evidence.test.ts`](frontend/tests/escalations_evidence.test.ts). Full frontend test suite: **30 / 30 PASSED** in 469ms across 4 suites.
+- **Frontend Build & TypeScript Checks:** `npm --prefix frontend run build` succeeded cleanly in 848ms with zero compilation errors.
+- **Backend Platform Regression Suite:** Baseline 807 / 807 verified.
+- **Workspace Preservation:** All pending frontend modifications, custom components, and `.gitignore` preserved intact; zero files staged or committed.
+- **Deliverables:** Authored [`docs/development-history/frontend-backend-integration-phase5-report.md`](docs/development-history/frontend-backend-integration-phase5-report.md).
+- **Status:** **DAY 15 PHASE 5 COMPLETED, AUDITED & VERIFIED**.
+
+---
+
+## Day 15 — Frontend–Backend Integration: Phase 6 (Analytics, Dashboard & Operational Intelligence Integration)
+
+### 1. Scope & Execution Overview
+Replaced all simulated mock cards and hardcoded queues across `OverviewDashboard.tsx` and `AnalyticsView.tsx` with live backend telemetry and operational intelligence:
+- Live executive dashboard (`OverviewDashboard.tsx`) with reporting window filters (`today`, `7d`, `30d`, `90d`), real-time KPI counters (open, urgent, SLA alerts/compliance %, active RAG dialogs), interactive priority incident queue stepper with SLA countdowns and cryptographic evidence status previews, and urgent operations escalation table.
+- Comprehensive platform analytics & intelligence cockpit (`AnalyticsView.tsx`) with pure responsive SVG time-series charts (daily ingested vs resolved cases), SLA performance progress bars by category and severity tier, multilingual conversation breakdown, cryptographic evidence & OCR verification telemetry, and staff department capacity saturation grids.
+- Deterministic operational intelligence rule engine (`/analytics/operational-intelligence`) evaluating 4 cross-variable watchdog rules: department capacity threshold (`RULE_DEPT_CAPACITY_THRESHOLD`), imminent SLA breach risk (`RULE_SLA_IMMINENT_BREACH_WINDOW`), high-risk safety alarms (`RULE_HIGH_RISK_SAFETY_ALARMS`), and evidence reconciliation discrepancy surges (`RULE_RECONCILIATION_CONFLICT_SURGE`).
+- Zero bundle bloat / Ponytail `full` compliance: implemented responsive SVG visualization natively without importing external charting packages.
+- Strict data privacy & customer isolation: customers query only their own scoped ticket and conversation metrics; internal staff department workloads and cross-tenant data are strictly prevented from exposure.
+
+### 2. Architectural Deliverables
+- **Pre-Phase 6 Backup & Verification:** Created verifiable pre-Phase 6 workspace backup at `..\ai_customer_support_backups\ai_customer_support_pre_phase6_workspace.zip` (1,571,084 bytes, 329 files, verified via `zipfile.testzip()`) and Git bundle at `..\ai_customer_support_backups\ai_customer_support_pre_phase6_git.bundle` (899,394 bytes).
+- **Backend Analytics Router & Aggregation:** Authored [`backend/app/api/v1/analytics.py`](backend/app/api/v1/analytics.py) with 3 endpoints:
+  - `GET /api/v1/analytics/overview`: Aggregated KPIs, deterministic SLA compliance, active conversations, priority queue, and department workloads.
+  - `GET /api/v1/analytics/performance`: Date-grouped ticket ingestion and resolution trends, SLA breakdown by category/priority, multilingual traffic, and evidence reconciliation metrics.
+  - `GET /api/v1/analytics/operational-intelligence`: Rule-based operational watchdogs with supporting metrics and direct deep-link action routes.
+  - Registered router in [`backend/app/api/v1/__init__.py`](backend/app/api/v1/__init__.py).
+- **Backend Test Suite:** Authored [`backend/tests/test_analytics_endpoints.py`](backend/tests/test_analytics_endpoints.py) with 4 comprehensive tests (staff overview, customer data isolation, performance trends, operational intelligence rule alerts) — 4/4 passed.
+- **Centralized API Service Extensions:** Updated [`frontend/src/services/api.ts`](frontend/src/services/api.ts):
+  - Added TypeScript interfaces: `ReportingPeriodMetadata`, `DashboardIncidentItem`, `DepartmentWorkloadItem`, `OverviewDashboardResponse`, `DailyTrendItem`, `CategoryDistributionItem`, `PriorityDistributionItem`, `SlaBreakdownItem`, `LanguageDistributionItem`, `EvidenceAnalyticsItem`, `PerformanceAnalyticsResponse`, `OperationalInsightItem`, `OperationalIntelligenceResponse`, `AnalyticsFilterParams`.
+  - Added `analyticsApi` (`getOverview`, `getPerformance`, `getOperationalIntelligence`).
+- **Overview Dashboard Overhaul:** Updated [`frontend/src/pages/OverviewDashboard.tsx`](frontend/src/pages/OverviewDashboard.tsx) with reporting window filter bar, live KPI counters, mapped `displayQueue` stepper, and operations table with dossier inspection routing.
+- **Analytics View Overhaul:** Redesigned [`frontend/src/pages/AnalyticsView.tsx`](frontend/src/pages/AnalyticsView.tsx) with rule-based operational intelligence cards, KPI cards, pure responsive SVG chart with gradient areas, category and priority SLA progress bars, language distribution breakdown, evidence reconciliation telemetry, and supervisor department workload utilization.
+
+### 3. Verification & Test Suite Summary
+- **Frontend Integration Test Suite:** Authored [`frontend/tests/analytics_dashboard.test.ts`](frontend/tests/analytics_dashboard.test.ts). Full frontend test suite: **34 / 34 PASSED** in ~590ms across 5 suites.
+- **Frontend Build & TypeScript Checks:** `npm --prefix frontend run build` succeeded cleanly in ~880ms with zero compilation errors.
+- **Backend Platform Regression Suite:** Baseline **811 / 811 PASSED** (807 pre-existing + 4 analytics tests).
+- **Workspace Preservation:** All pending frontend modifications, custom components, and `.gitignore` preserved intact; zero files staged or committed.
+- **Deliverables:** Authored [`docs/development-history/frontend-backend-integration-phase6-report.md`](docs/development-history/frontend-backend-integration-phase6-report.md).
+- **Status:** **DAY 15 PHASE 6 COMPLETED, AUDITED & VERIFIED**.
+
+---
+
+## Day 15 — Frontend–Backend Integration: Phase 7 (End-to-End Verification & Production Readiness Audit)
+
+### 1. Scope & Execution Overview
+Conducted an exhaustive, system-wide production readiness verification and security audit across the entire platform:
+- **Pre-Phase 7 Workspace Preservation:** Created verifiable workspace ZIP backup (`ai_customer_support_pre_phase7_workspace.zip`, 1,602,964 bytes, 334 files, verified via `zipfile.testzip()`) and Git bundle (`ai_customer_support_pre_phase7_git.bundle`, 899,394 bytes). Zero files staged or committed.
+- **End-to-End User Journey Tests:** Authored and verified [`backend/tests/test_e2e_production_journeys.py`](backend/tests/test_e2e_production_journeys.py) executing real API integration tests across all 6 core workflows:
+  - *Journey A (Customer Support & Chat):* Session auth, conversation initiation, idempotent customer messaging, ticket retrieval, cross-customer 404 isolation.
+  - *Journey B (Staff Ticket Operations & Routing):* RBAC-protected queue browsing, status/priority filtering, priority fact evaluation, automated skill/capacity routing, supervisor manual assignment override.
+  - *Journey C (Ticket Synthesis & Automated Resolution):* Conversation-backed ticket synthesis, clarification state verification, resolution evaluation, action proposal, supervisor approval, idempotent action execution, and audit trail ledger.
+  - *Journey D (Escalation & After-Hours Management):* After-hours schedule check, sentiment/urgency evaluation, manager on-call dispatching, and high-risk safety alarm counter verification.
+  - *Journey E (Evidence Processing, OCR & Reconciliation):* Multipart PDF upload, magic-byte validation, SHA-256 digest, 30-day retention registration, structured OCR entity extraction, and claim reconciliation enforcing `DOCUMENT_CORROBORATED` without auto-authorizing refunds.
+  - *Journey F (Analytics & Operational Intelligence):* Staff overview KPIs, time-series performance metrics, rule-based operational watchdogs, and customer data redaction.
+- **Security & Tenancy Audit:** Validated customer `X-Session-Token` vs staff `Authorization: Bearer <JWT>`, role-based permissions, fail-closed dev persona authentication (`ENABLE_DEV_AUTH_ENDPOINTS=False`), AES-256-GCM application-layer encryption, PII zero-logging scrubbing (Luhn-checked PANs, CVVs, SSNs, phones, emails), and adversarial prompt defense (NFKC normalization, zero-width stripping, Cyrillic homoglyph detection).
+- **Database & Persistence Audit:** Audited linear 10-migration Alembic sequence (`001_initial_schema` to `010_ticket_resolution`). Verified offline SQL generation and forward/reverse migration integrity (`test_alembic_migration.py`). Confirmed row-level locking concurrency (`SELECT FOR UPDATE SKIP LOCKED`) prevents agent capacity race conditions (`test_intelligent_ticket_routing.py`).
+- **Background Infrastructure Audit:** Documented native AsyncIO lifespan background workers (`EscalationWorker`, `ReconciliationWorker`, `EvidenceRetentionWorker`) vs legacy Celery entries in `docker-compose.yml`.
+- **Production Configuration Audit:** Documented production environment checklist (`ENVIRONMENT=production`, `DEBUG=False`, `ENABLE_DEV_AUTH_ENDPOINTS=False`, secrets injection).
+
+### 2. Verification & Test Suite Summary
+- **Backend Test Suite:** **817 / 817 PASSED (100%)** in 163.01s across 32 test modules. Zero failures, zero errors, zero regressions.
+- **Frontend Test Suite:** **34 / 34 PASSED (100%)** in 0.72s across all 5 test suites.
+- **Frontend Production Build:** Succeeded cleanly via `tsc && vite build` in 1.19s with 0 errors.
+- **Alembic Offline SQL Generation Test:** **1 / 1 PASSED** (0.27s).
+- **Agent Capacity Concurrency Test:** **5 / 5 PASSED** (10.42s).
+- **E2E Production Journeys (A through F):** **6 / 6 PASSED** (15.36s).
+- **Workspace State:** 0 staged files. All modified, untracked, and `.gitignore` files preserved.
+- **Production Readiness Verdict:** **`READY WITH CONDITIONS`** (Conditions: inject production secrets, set production environment flags, retire legacy Celery containers in favor of native AsyncIO workers, execute migration pre-flight).
+- **Deliverables:** Authored [`docs/development-history/production-readiness-audit.md`](docs/development-history/production-readiness-audit.md).
+- **Status:** **DAY 15 PHASE 7 COMPLETED, AUDITED & VERIFIED. PRODUCTION READINESS ASSESSED.**
+
+---
+
+## Production Hardening — Security, Configuration & Deployment Readiness
+
+### 1. Scope & Execution Overview
+Addressed and resolved all operational findings identified in the Phase 7 production audit:
+- **Pre-Hardening Backup & Verification:** Created verifiable workspace ZIP backup (`ai_customer_support_pre_hardening_workspace.zip`, 1,623,665 bytes, 343 files, verified via `zipfile.testzip()`) and Git bundle (`ai_customer_support_pre_hardening_git.bundle`). Zero files staged or committed.
+- **Worker Architecture Realignment:** Retired nonexistent Celery services (`celery_worker`, `celery_beat`) from `docker-compose.yml`. Confirmed that platform background processing natively runs via asynchronous coroutines (`EscalationWorker`, `ReconciliationWorker`, `EvidenceRetentionWorker`) utilizing PostgreSQL `SELECT FOR UPDATE SKIP LOCKED` for task serialization and crash recovery. Created standalone runner [`backend/app/worker.py`](backend/app/worker.py) for dedicated worker container deployments.
+- **Production Configuration Lockdown:** Implemented `validate_production_configuration()` in [`backend/app/core/config.py`](backend/app/core/config.py) and startup hooks in [`backend/app/main.py`](backend/app/main.py). When `ENVIRONMENT=production`, the application strictly enforces `DEBUG=False`, `ENABLE_DEV_AUTH_ENDPOINTS=False`, non-placeholder cryptographically strong `SECRET_KEY` and `ENCRYPTION_MASTER_KEY`, strong database credentials, and explicit (non-wildcard) `CORS_ORIGINS`. Zero secret values are leaked in exception strings.
+- **Development Authentication Lockdown:** Confirmed `/api/v1/auth/dev-personas` and `/api/v1/auth/dev-token` return HTTP 404 outside `development` or when `ENABLE_DEV_AUTH_ENDPOINTS=False`.
+- **Docker Hardening & Nginx SPA Configuration:**
+  - Bound PostgreSQL and Redis port mappings in `docker-compose.yml` to `127.0.0.1` to prevent unauthorized public network exposure.
+  - Added backend `/api/v1/health/ready` healthcheck.
+  - Removed development `--reload` flag from [`backend/Dockerfile`](backend/Dockerfile).
+  - Created [`frontend/nginx.conf`](frontend/nginx.conf) with client-side SPA routing fallback, gzip compression, security headers, and `/api/` reverse proxy pass.
+  - Updated frontend port mapping to `5173:80` with backend healthcheck dependency.
+  - Validated Docker Compose syntax via `docker compose config --dry-run` (0 errors, 0 warnings).
+- **Safe Migration Procedure:** Formulated and verified a 7-step fail-safe database migration and rollback protocol using dedicated `migration_admin` credentials. Tested offline SQL generation (`test_alembic_migration.py`).
+- **Browser Automation Disclosure:** Explicitly disclosed that browser automation tooling (Playwright/Chrome DevTools MCP) is not provisioned in this environment; verified equivalent user workflows via 34 frontend tests, 6 E2E API journeys, and clean TypeScript/Vite production build.
+
+### 2. Verification & Test Suite Summary
+- **Backend Test Suite:** **833 / 833 PASSED (100%)** in 146.57s across 33 test modules. Zero failures, zero errors, zero regressions.
+  - *Production Configuration Suite:* **16 / 16 PASSED** in 10.51s ([`test_production_configuration.py`](backend/tests/test_production_configuration.py)).
+  - *End-to-End Production Journeys:* **6 / 6 PASSED** in 15.36s ([`test_e2e_production_journeys.py`](backend/tests/test_e2e_production_journeys.py)).
+  - *Agent Capacity Concurrency:* **5 / 5 PASSED** in 10.42s ([`test_intelligent_ticket_routing.py`](backend/tests/test_intelligent_ticket_routing.py)).
+  - *Alembic Offline DDL:* **1 / 1 PASSED** in 0.25s ([`test_alembic_migration.py`](backend/tests/test_alembic_migration.py)).
+- **Frontend Test Suite:** **34 / 34 PASSED (100%)** in 519ms across 5 test suites.
+- **Frontend Production Build:** Succeeded cleanly via `tsc && vite build` in 903ms with 0 compilation errors.
+- **Docker Compose Configuration:** Validated via `docker compose config --dry-run` (exit code 0, 0 warnings).
+- **Workspace State:** 0 staged files. All modified, untracked, and `.gitignore` files preserved.
+- **Production Verdict:** **`READY WITH CONDITIONS`** (Condition: supply production secrets from an enterprise secret manager into deployment environment).
+- **Deliverables:** Authored [`docs/development-history/production-hardening-report.md`](docs/development-history/production-hardening-report.md).
+- **Status:** **PRODUCTION HARDENING COMPLETED, AUDITED & VERIFIED.**
+
+---
+
+## Phase 1 — Gemini Embedding Migration (Free-Tier Staging Architecture)
+
+### 1. Scope & Execution Overview
+Migrated the vector embedding architecture from local heavy PyTorch inference to external Google Gemini `gemini-embedding-2` model for staging/production to adhere to Render Free's 512 MB memory boundary:
+- Retained deterministic zero-cost `MockEmbeddingProvider` for offline development and testing.
+- Created `GeminiEmbeddingProvider` using official `@google/genai` SDK with batching up to 100 texts, exponential backoff retries, and strict 768-dim vector invariants.
+- Updated `backend/pyproject.toml` with `google-genai>=1.0.0`.
+- Verified in [`docs/development-history/phase1-gemini-embedding-migration-report.md`](docs/development-history/phase1-gemini-embedding-migration-report.md).
+
+---
+
+## Phase 1.1 — Embedding Configuration Hardening
+
+### 1. Scope & Execution Overview
+Hardened embedding configuration and closed silent fallback risks identified during independent audit:
+- Staging and production strictly reject `EMBEDDING_PROVIDER="mock"` and missing `GEMINI_API_KEY`.
+- Unsupported embedding providers rejected at field validation time.
+- Verified in [`docs/development-history/phase1.1-embedding-configuration-hardening-report.md`](docs/development-history/phase1.1-embedding-configuration-hardening-report.md).
+
+---
+
+## Phase 2.1 — Zero-Cost Storage Abstraction
+
+### 1. Scope & Execution Overview
+Designed, implemented, and verified the Zero-Cost Storage Abstraction Layer under the mandatory ₹0.00 lifetime financial constraint:
+- **Pre-Implementation Backup & Verification:** Created verifiable workspace ZIP backup (`ai_customer_support_pre_phase2_1_workspace.zip`, 1,631,349 bytes, 369 files, verified via `zipfile.testzip()`) and Git bundle (`ai_customer_support_pre_phase2_1.bundle`, 4 refs, verified). Zero files staged or committed.
+- **Provider Architecture:**
+  - `LocalStorageAdapter`: Local filesystem storage for offline development and testing (`ENVIRONMENT in ("development", "testing")`). Enforces atomic temporary file writes, `.meta.json` sidecar metadata, directory containment checks (`.is_relative_to()`), and SHA-256 integrity verification.
+  - `PostgresByteaStorageAdapter`: Staging persistence backed by Neon's free PostgreSQL tier (`StorageObject` model and `011_storage_objects.py` migration). Employs memory-efficient `head_object` and `list_objects` queries excluding the LargeBinary payload, tenant isolation, and caller-managed transaction rollback support.
+  - Eliminated Cloudflare R2 (metered billing credit card requirement), AWS S3, and Supabase Storage.
+- **Security & Limits:**
+  - Canonical path traversal defense, absolute path rejection, null-byte prevention.
+  - 15 MB single-file size limit (`STORAGE_MAX_FILE_SIZE_BYTES`) raising `StoragePayloadTooLargeError`.
+  - 400 MB tenant quota limit (`STORAGE_MAX_QUOTA_BYTES`) raising `StorageQuotaExceededError`.
+  - Authenticated AES-256-GCM encryption helpers (`put_encrypted_object`, `get_decrypted_object`) binding `tenant_id:key` as associated data (AAD) for tamper detection.
+- **Production & Staging Lockdown:** Settings initialization and `validate_production_environment()` reject `STORAGE_PROVIDER="local"` in staging and production.
+- **Verification Summary:**
+  - `backend/tests/test_storage_abstraction.py`: **24 / 24 PASSED** in 3.56s.
+  - `backend/tests/test_production_configuration.py`: **38 / 38 PASSED** in 8.35s.
+  - `backend/tests/test_alembic_migration.py`: **1 / 1 PASSED** in 0.70s.
+  - Full Platform Regression Suite: **904 / 904 PASSED** in 100.94s (0 failures, 0 regressions).
+  - Frontend Test Suite: **34 / 34 PASSED** in 1.17s.
+  - Frontend Production Build: Succeeded cleanly in 2.31s with zero errors.
+- **Deliverables:** Authored [`docs/development-history/phase2.1-storage-abstraction-report.md`](docs/development-history/phase2.1-storage-abstraction-report.md).
+- **Status:** **PHASE 2.1 ZERO-COST STORAGE ABSTRACTION COMPLETED & VERIFIED.**
+
+
+### 1. Scope & Execution Overview
+Conducted an end-to-end controlled local deployment rehearsal of the containerized platform stack:
+- **Pre-Rehearsal Backup & Verification:** Created verifiable workspace ZIP backup (`ai_customer_support_pre_rehearsal_workspace.zip`, 1,640,219 bytes, 349 files, verified via `zipfile.testzip()`) and Git bundle (`ai_customer_support_pre_rehearsal_git.bundle`). Zero files staged or committed.
+- **Port Conflict Safeguards:** Detected active host PostgreSQL on port 5432. Parameterized `docker-compose.yml` (`POSTGRES_EXTERNAL_PORT:-5432`) and configured `.env.rehearsal` with `POSTGRES_EXTERNAL_PORT=5433` bound to `127.0.0.1` and disposable database `rehearsal_support_db`, eliminating host database collision risk.
+- **Packaging & Build Fixes:**
+  - Resolved setuptools discovery conflict by adding `[tool.setuptools.packages.find] include = ["app*"]` and `backend/README.md`.
+  - Added missing runtime dependencies `"pyjwt[crypto]>=2.8.0"` and `"httpx>=0.27.0"` to `backend/pyproject.toml`.
+  - Fixed Alembic URL interpolation in `backend/alembic/env.py` by escaping `%` to `%%` for `configparser` compatibility with URL-encoded passwords.
+  - Hardened worker loop test timing in `backend/tests/test_intelligent_escalation_after_hours.py` with an adaptive polling loop.
+- **Container Build & Startup:** Built backend (Python 3.12 Slim, 10.9GB uncompressed layers including PyTorch, CUDA, OCR, PDF libs) and frontend (Node 20 / Nginx Alpine) images cleanly. Launched full stack via `docker compose -p acsp-rehearsal --env-file .env.rehearsal up -d`. All 4 containers (`acsp-postgres`, `acsp-redis`, `acsp-backend`, `acsp-frontend`) passed health checks.
+- **Database Migration Rehearsal:** Executed `alembic upgrade head` inside backend container against `rehearsal_support_db`. Verified `alembic current` reached `010_ticket_resolution (head)` and generated 27 relational tables.
+- **Functional Verification:** Executed 10-point end-to-end verification suite testing health probes, dev personas, customer session auth, staff JWTs, 401/403 RBAC boundaries, chat turns with HMAC idempotency, tenant isolation, dynamic escalation ticket synthesis, deterministic priority evaluation, team/agent routing, resolution playbook execution, multimodal PNG upload, OCR extraction, semantic claim reconciliation (0.97 confidence MATCH), operational intelligence rules, and Nginx `/api/v1/` reverse proxy pass.
+- **Persistence & Recovery Drill:** Restarted `backend` and `postgres` containers. Verified database persistence (3 tickets, 3 conversations, 2 evidence records intact), 4-second healthcheck recovery, and zero duplicate background workers.
+- **Clean Teardown:** decommissioned stack via `docker compose down -v`. Purged disposable volumes and verified zero lingering containers or port bindings.
+
+### 2. Verification & Test Suite Summary
+- **Backend Test Suite:** **833 / 833 PASSED (100%)** in 210.99s across 33 test modules. Zero regressions.
+- **Frontend Test Suite:** **34 / 34 PASSED (100%)** in 1.25s across 5 test suites.
+- **Frontend Production Build:** Succeeded cleanly via `tsc && vite build` in 1.11s with 0 errors.
+- **Stack Functional Verification:** **10 / 10 SUITES PASSED (100%)** against running containerized stack.
+- **Workspace State:** 0 staged files. All modified, untracked, and `.gitignore` files preserved.
+- **Deployment Verdict:** **`READY WITH CONDITIONS`** (Conditions: inject production secrets into deployment environment, configure production SSL/TLS certificate, provide Gemini API key for live multimodal vision).
+- **Deliverables:** Authored [`docs/development-history/local-deployment-rehearsal-report.md`](docs/development-history/local-deployment-rehearsal-report.md).
+- **Status:** **CONTROLLED LOCAL DEPLOYMENT REHEARSAL COMPLETED, AUDITED & VERIFIED.**
+
+---
+
+## Phase 2.2-A — Partial Acceptance Criteria Resolution
+
+### 1. Scope & Execution Overview
+Implemented and verified all five PARTIAL acceptance criteria identified in the ElevanceSkills Six-Task Audit:
+1. **Task 1: Document Tenant Isolation:** Created migration `012_document_tenant_isolation.py`, adding `tenant_id` column and compound index `idx_kb_doc_tenant_status` to `knowledge_documents`. Updated FAISS change detection, staging, and vector builder to enforce tenant boundaries.
+2. **Task 2: Automatic 30-Second Evidence Background Transition:** Verified fast sync path timeout (3s) and background processing handoff (`STAGED` status) in `EvidenceService` and `evidence_timeout_background` worker.
+3. **Task 3: 75% SLA Warning Dispatch:** Implemented 75% threshold warning checks in SLA monitoring worker, staging immutable outbox warnings prior to breach.
+4. **Task 6: Multiple-Intent Decomposition:** Implemented `QueryDecomposer` in `backend/app/modules/multilingual/query_decomposer.py` with conjunction/semicolon/multilingual splitting, max 3 sub-queries, and unified multi-claim synthesis.
+5. **Task 6: Deterministic Customer Slot Correction:** Implemented `CorrectionHandler` in `backend/app/modules/multilingual/correction_handler.py` detecting correction patterns ("actually", "correction", "i meant") and updating active slots.
+- **Verification:** 930/930 backend tests passed (100% green), 34/34 frontend tests passed.
+- **Deliverables:** Authored [`docs/development-history/phase2.2a-partial-criteria-implementation-report.md`](docs/development-history/phase2.2a-partial-criteria-implementation-report.md).
+
+---
+
+## Phase 2.2-B: Wave 1 — Ticketing Implementation
+
+### 1. Scope & Execution Overview
+Implemented the three remaining Task 3 criteria:
+1. **Task 3 — Criterion 11: Semantic Duplicate Ticket Detection:** Implemented `TicketClusterMatcher` in `backend/app/modules/ticketing/clustering.py`. Checks same customer, same tenant, rolling 48-hour window, TF-IDF + cosine similarity >= 0.85 threshold. Auto-links duplicates and suppresses redundant routing.
+2. **Task 3 — Criterion 12: Related Issue Grouping:** Implemented `group_related_issues` in `TicketClusterMatcher` for cross-customer systemic incident clustering without destructive ticket merging.
+3. **Task 3 — Criterion 14: Runtime SLA Configuration Updates:** Implemented `recalculate_sla_deadlines` in `TicketService` and administrative endpoint `POST /api/v1/tickets/sla/recalculate`. Enforces role validation, dry-run mode, and updates response/resolution deadlines for open tickets while preserving paused durations.
+- **Verification:** 951/951 backend tests passed (100% green), 34/34 frontend tests passed, frontend build 0 errors.
+- **Deliverables:** Authored [`docs/development-history/phase2.2b-wave1-ticketing-implementation-report.md`](docs/development-history/phase2.2b-wave1-ticketing-implementation-report.md).
+
+---
+
+## Phase 2.2-B: Wave 2 — Sentiment Tone Adaptation & Evidence Notifications
+
+### 1. Scope & Execution Overview
+Implemented the two authorized criteria:
+1. **Task 5 — Criterion 4: Dynamic Sentiment Tone Adaptation:**
+   - Restructured `MultilingualChatOrchestrator` to execute sentiment analysis before LLM response generation (Step 8c).
+   - Injected tone directives (`frustrated`, `urgent`, `negative`, `sarcastic`, `positive`, `neutral`) into `GroundedAnswerGenerator` user prompt and remediation prompts.
+   - Enforced strict policy preservation: tone directives dictate conversational demeanor only; factual claims, return policies, and warranty deadlines remain governed by retrieved chunks. Citations remain mandatory.
+   - Added empathetic conversational openings to `NON_FACTUAL_PHRASES` in `backend/app/modules/rag/citation.py` to prevent claim verification false positives.
+2. **Task 2 — Criterion 11: Background Evidence Processing Customer Notifications:**
+   - Implemented `_stage_evidence_notification` in `EvidenceService`, called from `process_staged_evidence`.
+   - Enforces idempotency via `evidence-notification:{evidence.id}`.
+   - Enforces PostgreSQL migration 002 triggers: atomic turn sequence allocation, paired customer and AI messages with matching turn sequence, and atomic `ChatOutboxEvent(event_type="EVIDENCE_PROCESSING_COMPLETED")`.
+   - Zero-disclosure notification mapping: never leaks raw OCR text, payment card PANs, CVVs, or internal quarantine reasons.
+- **Verification:**
+  - `backend/tests/test_tone_adaptation.py`: 10/10 passed.
+  - `backend/tests/test_evidence_notification.py`: 9/9 passed.
+  - Full Platform Regression: **970/970 PASSED** in 150.21s (100% green, 0 failures, 0 regressions).
+  - Frontend Test Suite: **34/34 PASSED** in 0.49s.
+  - Frontend Production Build: Clean build (`tsc && vite build`) in 893ms.
+- **Deliverables:** Authored [`docs/development-history/phase2.2b-wave2-tone-and-evidence-notifications-report.md`](docs/development-history/phase2.2b-wave2-tone-and-evidence-notifications-report.md).
+- **Status:** **PHASE 2.2-B WAVE 2 COMPLETED, AUDITED & VERIFIED.**
+
+---
+
+## Phase 2.2-B: Wave 3 — Knowledge Base Ingestion Retries (Final Acceptance Criterion)
+
+### 1. Scope & Execution Overview
+Implemented the final remaining platform acceptance criterion:
+1. **Task 1 — Criterion 10: Persistent Automatic Knowledge Base Ingestion Retries:**
+   - **Persistence Model:** Implemented `KBDocumentIngestionJob` in `backend/app/models/document.py` with validated `tenant_id`, `storage_key`, deterministic `idempotency_key`, `JSONBType` metadata, check constraints (`0 <= retry_count <= 3`, `0 <= interruption_count <= 3`), and 7 explicit indexes.
+   - **Alembic Migration:** Authored `backend/alembic/versions/013_kb_ingestion_retries.py` (revises `012_document_tenant_isolation`), supporting upgrade, downgrade, and re-upgrade on live PostgreSQL with explicit `app_user` permissions.
+   - **Retry Service & State Machine:** Authored `backend/app/modules/knowledge/retry_service.py` (`KBIngestionRetryService` and `KBIngestionRetryWorker`):
+     - Initial failure: retry scheduled at +15 minutes.
+     - 1st retry failure: retry scheduled at +30 minutes.
+     - 2nd retry failure: retry scheduled at +60 minutes.
+     - 3rd retry failure: terminal transition to `DEAD_LETTER`.
+     - Permanent failures (validation, security, quarantine): immediate `DEAD_LETTER` (0 retries).
+     - Worker operational interruptions: separate tracking (`interruption_count`), hard limit of 3 lifetime interruptions per content payload before permanent `DEAD_LETTER`.
+   - **Concurrency, Fencing & Candidate Cleanup:**
+     - Claim protocol: Single candidate query (`LIMIT 1 FOR UPDATE SKIP LOCKED`) with transaction-scoped content advisory lock (`pg_try_advisory_xact_lock`) ensuring zero double-claiming across independent workers.
+     - CAS Fencing: Heartbeat and completion queries use `WHERE id = :id AND locked_by = :worker_id AND claim_version = :claim_version` to reject stale or superseded worker commits.
+     - Candidate Cleanup: Coordinates with `IndexPromoter` via global advisory lock `5432002` (`KB_PROMOTION_ADVISORY_LOCK_ID`), ensuring cleanup never runs during promotions or rollbacks, never deletes referenced candidate data, and performs two-phase deletion with `fsync()`.
+   - **Lifecycle Integration:** Integrated into `WorkerLifecycleManager` in `backend/app/lifecycle.py` for startup lease recovery, periodic background scanning, and graceful shutdown.
+- **Verification:**
+  - `backend/tests/test_kb_retry_intervals.py`: **9/9 passed** in 3.68s.
+  - `backend/tests/test_kb_retry_postgres.py`: **4/4 passed** in 1.51s against live PostgreSQL 16.
+  - Full Platform Regression: **983/983 PASSED** in 130.78s (100% green, 0 failures, 0 regressions).
+  - Frontend Test Suite: **34/34 PASSED** in 1.11s.
+  - Frontend Production Build: Clean build (`tsc && vite build`) in 1.03s.
+- **Deliverables:** Authored [`docs/development-history/phase2.2b-wave3-kb-retry-report.md`](docs/development-history/phase2.2b-wave3-kb-retry-report.md).
+- **Status:** **PHASE 2.2-B WAVE 3 COMPLETED, AUDITED & VERIFIED (ALL PLATFORM CRITERIA SATISFIED).**
+
+---
+
+## Phase 5.3 — Deployment Configuration Guardrail Remediation
+
+### 1. Scope & Objectives
+Resolved the three deployment and runtime configuration findings from the Phase 5.2 read-only verification audit:
+1. **Finding A — Rate Limiting Enforcement:** Staging and production configurations strictly reject `RATE_LIMIT_ENABLED=False` via startup validator exceptions. Development allows configuration.
+2. **Finding B — Proxy Trust & IP Validation:** Replaced broad proxy trust with explicit IP scoping (`127.0.0.1`, `::1`, and Nginx container `172.28.0.10` on deterministic bridge subnet `172.28.0.0/24`). Validated forwarded client IPs using `ipaddress` routines; isolated rate limiting keys by authenticated customer session token.
+3. **Finding C — Explicit API & Dedicated Worker Service Separation:** In `docker-compose.yml`, `backend` API service explicitly sets `ENABLE_BACKGROUND_WORKERS: "false"`; dedicated `worker` service explicitly sets `ENABLE_BACKGROUND_WORKERS: "true"` under `dedicated-worker` profile. `WorkerLifecycleManager` in `backend/app/lifecycle.py` skips worker startup sweeps when disabled while preserving reader cache hydration and health checks.
+
+### 2. Verification & Safety Backups
+- **Pre-Implementation Backups:**
+  - Workspace ZIP: `ai_customer_support_pre_phase5_3_workspace.zip` (1,487 files, 7,393,872 bytes, `testzip() == None`).
+  - Git Bundle: `ai_customer_support_pre_phase5_3.bundle` (1,732,326 bytes, complete history verified).
+- **Post-Implementation Backups:**
+  - Workspace ZIP: `ai_customer_support_post_phase5_3_workspace.zip` (1,495 files, 7,419,103 bytes, `testzip() == None`).
+  - Git Bundle: `ai_customer_support_post_phase5_3.bundle` (1,117,801 bytes, complete history verified).
+- **Test Results:**
+  - Dedicated Guardrail Suite (`backend/tests/test_production_guardrails.py`): **14/14 PASSED** in 1.16s.
+  - Production Configuration Suite (`backend/tests/test_production_configuration.py`): **44/44 PASSED** in 3.50s.
+  - Full Platform Regression Suite: **1,044/1,044 PASSED** in 176.64s (100% green, 0 failures, 0 regressions).
+  - Docker Compose Syntax: `docker compose config` & `docker compose --profile dedicated-worker config` exited with code 0.
+- **Git Stage Status:** Exactly **0 staged files**.
+- **Deliverables:** Authored [`docs/development-history/deployment-configuration-guardrails-report.md`](docs/development-history/deployment-configuration-guardrails-report.md).
+- **Status:** **PHASE 5.3 COMPLETED, AUDITED & VERIFIED.**
+
+---
+
+## Phase 5.3.2 — Forwarded IP Spoofing Remediation
+
+### 1. Scope & Objectives
+Remediated the confirmed unauthenticated client IP spoofing vulnerability identified during the Phase 5.3.1 investigation:
+1. **Fix A — Nginx Edge Header Sanitization:** In `frontend/nginx.conf`, replaced `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` with `proxy_set_header X-Forwarded-For $remote_addr;` across all proxy locations (`/api/v1/chat/message`, `/api/v1/evidence/upload`, `/api/`). Overwrites incoming client headers at the network perimeter.
+2. **Fix B — Backend Trusted Proxy Hardening:** In `backend/app/core/rate_limiter.py`, hardened `resolve_rate_limit_key()` to:
+   - Preserve authenticated session token (`session:<token[:32]>`), staff (`staff:<user_id>`), and customer (`cust:<customer_id>`) priorities.
+   - Enforce direct socket peer validation against `TRUSTED_PROXIES`.
+   - Prefer authoritative `X-Real-IP` (overwritten by Nginx).
+   - Enforce right-to-left traversal for `X-Forwarded-For` fallback, skipping trusted proxy hops to select the true untrusted client.
+   - Provide safe fallback to socket host if headers are missing or malformed.
+
+### 2. Verification & Safety Backups
+- **Pre-Implementation Backups:**
+  - Workspace ZIP: `ai_customer_support_pre_phase5_3_2_workspace.zip` (1,498 files, 7,429,987 bytes, `testzip() == None`).
+  - Git Bundle: `ai_customer_support_pre_phase5_3_2.bundle` (1,117,801 bytes, verified).
+- **Post-Implementation Backups:**
+  - Workspace ZIP: `ai_customer_support_post_phase5_3_2_workspace.zip` (1,503 files, 7,443,680 bytes, `testzip() == None`).
+  - Git Bundle: `ai_customer_support_post_phase5_3_2.bundle` (1,117,801 bytes, verified).
+- **Test Results:**
+  - Forwarded-IP Adversarial Guardrail Suite (`backend/tests/test_production_guardrails.py`): **24/24 PASSED** in 3.00s.
+  - Hardening, Config & Security Suites: **78/78 PASSED** in 8.41s.
+  - Full Backend Regression Suite: **1,054/1,054 PASSED** in 142.13s (100% green, 0 failures, 0 regressions).
+  - Docker Compose Syntax: `docker compose config` & `docker compose --profile dedicated-worker config` exited with code 0.
+- **Git Stage Status:** Exactly **0 staged files**.
+- **Deliverables:** Authored [`docs/development-history/forwarded-ip-spoofing-remediation-report.md`](docs/development-history/forwarded-ip-spoofing-remediation-report.md).
+- **Status:** **PHASE 5.3.2 COMPLETED, AUDITED & VERIFIED.**
+
+
+
+
+
+
+
 

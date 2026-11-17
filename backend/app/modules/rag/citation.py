@@ -39,6 +39,17 @@ NON_FACTUAL_PHRASES: Set[str] = {
     "based on the documentation",
     "please reach out if you have further inquiries",
     "have a great day",
+    "i understand your frustration",
+    "we understand your frustration",
+    "i apologize for the inconvenience",
+    "we apologize for the inconvenience",
+    "i am sorry for your trouble",
+    "i am sorry for the inconvenience",
+    "thank you for your patience",
+    "thank you for reaching out",
+    "thank you for your inquiry",
+    "immediate next step",
+    "next steps",
 }
 
 

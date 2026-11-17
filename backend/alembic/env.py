@@ -33,7 +33,7 @@ target_metadata = Base.metadata
 # Use environment configuration for database URL
 db_url = settings.migration_async_database_url
 if db_url:
-    config.set_main_option("sqlalchemy.url", db_url)
+    config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:

@@ -109,12 +109,14 @@ def create_test_staff_jwt(
     user_id: str = "agent-user-1",
     roles: Optional[List[str]] = None,
     secret: Optional[str] = None,
+    tenant_id: str = "default",
 ) -> str:
     """Creates signed staff JWT token with given roles."""
     now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
         "roles": roles or ["AGENT"],
+        "tenant_id": tenant_id,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(hours=1)).timestamp()),
     }
@@ -132,6 +134,7 @@ async def seeded_context(session: AsyncSession):
         id=uuid.uuid4(),
         email="customer1@example.com",
         full_name="Alice Smith",
+        metadata_={"tenant_id": "default"},
         created_at=now,
     )
     session.add(cust_1)
@@ -163,6 +166,7 @@ async def seeded_context(session: AsyncSession):
         id=uuid.uuid4(),
         email="customer2@example.com",
         full_name="Bob Jones",
+        metadata_={"tenant_id": "tenant-2"},
         created_at=now,
     )
     session.add(cust_2)

@@ -141,3 +141,49 @@ async def test_message_persistence_masked_vs_encrypted(
     )
     assert decrypted_raw == raw_text
 
+
+@pytest.mark.asyncio
+async def test_pii_api_key_and_gemini_header_redaction(monkeypatch):
+    """Asserts API keys and bearer tokens are redacted and Gemini Vision uses header auth without URL keys."""
+    from unittest.mock import AsyncMock, MagicMock
+    from app.modules.evidence.providers.gemini_provider import GeminiVisionOCRProvider
+
+    secret = "AIzaSyFakeKey1234567890ABCDEFGHIJKLMN"
+    noisy = f"POST https://generativelanguage.googleapis.com/v1beta/models/x:generateContent?key={secret} Bearer tok_1234567890abcdef"
+    masked = PIIMaskingEngine.mask_text(noisy)
+    assert secret not in masked
+    assert "tok_1234567890abcdef" not in masked
+    assert "[REDACTED]" in masked or "[API_KEY_REDACTED]" in masked
+
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, headers=None, json=None):
+            captured["url"] = url
+            captured["headers"] = headers or {}
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.json.return_value = {
+                "candidates": [{"content": {"parts": [{"text": "Order ID: ORD-100"}]}}]
+            }
+            return resp
+
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+
+    provider = GeminiVisionOCRProvider(api_key=secret, model_name="gemini-3.8-flash")
+    res = await provider.extract_document(b"\xff\xd8\xff\xe0test", "image/jpeg", "receipt.jpg")
+    assert "?key=" not in captured["url"]
+    assert captured["headers"].get("x-goog-api-key") == secret
+    assert "ORD-100" in res.raw_text
+
+

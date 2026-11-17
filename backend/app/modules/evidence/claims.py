@@ -67,10 +67,18 @@ class ExtractedClaimsPayload(BaseModel):
     primary_product: Optional[str] = None
     primary_quantity: Optional[float] = None
     intent_double_charge: bool = False
+    is_adversarial: bool = False
+    quarantine_reason: Optional[str] = None
+    security_flags: List[str] = Field(default_factory=list)
 
 
 class ClaimExtractionEngine:
     """Extracts verifiable claims from customer natural language messages."""
+
+    def __init__(self, security_guard: Optional[Any] = None):
+        from app.modules.evidence.security_guard import AdversarialEvidenceGuard
+        self.security_guard = security_guard or AdversarialEvidenceGuard()
+
 
     # Currencies
     CURRENCY_SYMBOLS: Dict[str, str] = {
@@ -202,6 +210,12 @@ class ClaimExtractionEngine:
         primary_dt = date_claim.normalized_value if date_claim else None
         primary_qty = qty_claim.normalized_value if qty_claim else None
 
+        # 7. Customer Utterance Security Scan
+        sec_res = self.security_guard.scan_customer_claim(text)
+        is_adversarial = sec_res.is_malicious
+        quarantine_reason = sec_res.quarantine_reason
+        security_flags = [f.rule_name for f in sec_res.findings]
+
         return ExtractedClaimsPayload(
             message_id=message_id,
             raw_text=text,
@@ -214,6 +228,9 @@ class ClaimExtractionEngine:
             primary_date=primary_dt,
             primary_quantity=primary_qty,
             intent_double_charge=is_double_charge,
+            is_adversarial=is_adversarial,
+            quarantine_reason=quarantine_reason,
+            security_flags=security_flags,
         )
 
     def _extract_order_id(self, text: str, message_id: Optional[str]) -> Optional[CustomerClaim]:

@@ -247,6 +247,29 @@ class ReconciliationWorker:
             else:
                 invoice_data = self._reconstruct_from_entity(entity)
 
+        # Check secondary evidence if present
+        sec_invoice_data = None
+        sec_file_hash = None
+        if getattr(job, "secondary_evidence_file_id", None):
+            sec_stmt = (
+                select(EvidenceFile)
+                .where(EvidenceFile.id == job.secondary_evidence_file_id)
+                .options(selectinload(EvidenceFile.extracted_entities))
+            )
+            sec_res = await session.execute(sec_stmt)
+            sec_evidence = sec_res.scalar_one_or_none()
+            if sec_evidence:
+                sec_file_hash = sec_evidence.sha256_hash
+                if sec_evidence.extracted_entities:
+                    sec_ent = sec_evidence.extracted_entities[0]
+                    if sec_ent.extraction_metadata:
+                        try:
+                            sec_invoice_data = StructuredInvoiceData(**sec_ent.extraction_metadata)
+                        except Exception:
+                            sec_invoice_data = self._reconstruct_from_entity(sec_ent)
+                    else:
+                        sec_invoice_data = self._reconstruct_from_entity(sec_ent)
+
         # Run reconciliation engine
         reconcile_result = self.reconciliation_engine.reconcile(
             claims_payload=claims_payload,
@@ -255,6 +278,10 @@ class ReconciliationWorker:
             conversation_id=str(job.conversation_id) if job.conversation_id else None,
             is_quarantined=is_quarantined,
             quarantine_reason=evidence.quarantine_reason,
+            secondary_evidence_data=sec_invoice_data,
+            secondary_evidence_id=str(job.secondary_evidence_file_id) if getattr(job, "secondary_evidence_file_id", None) else None,
+            primary_file_hash=evidence.sha256_hash,
+            secondary_file_hash=sec_file_hash,
         )
 
         match_status_map = {
@@ -283,6 +310,7 @@ class ReconciliationWorker:
         job.extracted_claims = serialized_claims
         job.field_comparisons = {"results": serialized_comps, "summary": reconcile_result.summary}
         job.overall_confidence = reconcile_result.overall_confidence
+        job.security_flags = getattr(claims_payload, "security_flags", []) or []
 
     def _reconstruct_from_entity(self, entity) -> StructuredInvoiceData:
         return StructuredInvoiceData(
@@ -299,8 +327,49 @@ class ReconciliationWorker:
             },
         )
 
+    @property
+    def evidence_service(self):
+        if not hasattr(self, "_evidence_service") or self._evidence_service is None:
+            from app.modules.evidence.service import EvidenceService
+            self._evidence_service = EvidenceService()
+        return self._evidence_service
+
+    async def scan_and_process_staged_evidence(
+        self,
+        session: AsyncSession,
+        batch_size: Optional[int] = None,
+    ) -> List[EvidenceFile]:
+        """Claims and processes a batch of STAGED evidence files in the background."""
+        limit = batch_size or self.batch_size
+        stmt = (
+            select(EvidenceFile)
+            .where(EvidenceFile.status == "STAGED")
+            .order_by(EvidenceFile.created_at.asc())
+            .limit(limit)
+        )
+        bind = session.bind
+        dialect_name = bind.dialect.name if bind else "postgresql"
+        if dialect_name == "postgresql":
+            stmt = stmt.with_for_update(skip_locked=True)
+
+        res = await session.execute(stmt)
+        staged_files = res.scalars().all()
+        if not staged_files:
+            return []
+
+        processed_files: List[EvidenceFile] = []
+        for ef in staged_files:
+            processed = await self.evidence_service.process_staged_evidence(
+                db=session,
+                evidence_id=ef.id,
+            )
+            if processed:
+                processed_files.append(processed)
+
+        return processed_files
+
     async def run_once(self) -> Dict[str, Any]:
-        """Executes a single pass of stale recovery and pending batch processing."""
+        """Executes a single pass of stale recovery, pending batch processing, and staged evidence."""
         if not self.session_factory:
             raise RuntimeError("Cannot call run_once() without a configured session_factory.")
 
@@ -308,7 +377,8 @@ class ReconciliationWorker:
             try:
                 recovered = await self.recover_stale_jobs(session)
                 processed = await self.scan_and_process_batch(session)
-                return {"recovered": recovered, "processed": len(processed)}
+                staged = await self.scan_and_process_staged_evidence(session)
+                return {"recovered": recovered, "processed": len(processed), "staged": len(staged)}
             except Exception:
                 await session.rollback()
                 raise

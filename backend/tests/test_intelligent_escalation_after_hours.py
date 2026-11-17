@@ -890,7 +890,10 @@ async def test_worker_continues_periodic_scanning_after_startup(session: AsyncSe
         assert worker.is_running is True
 
         # Let the background loop perform multiple periodic cycles
-        await asyncio.sleep(0.06)
+        for _ in range(50):
+            if worker.scan_count >= 2:
+                break
+            await asyncio.sleep(0.01)
 
         # Worker executed multiple scan iterations
         assert worker.scan_count >= 2, f"Expected periodic scanning (scan_count >= 2), got {worker.scan_count}"

@@ -711,7 +711,30 @@ class ConversationLifecycleManager:
 
         # Step 3: PostgreSQL Fallback
         target_conv_id = conversation_id
-        if target_conv_id is None:
+        if target_conv_id is not None:
+            # P0 BOLA Defense: Verify target conversation belongs to caller's session or customer
+            t_stmt = select(Conversation).where(Conversation.id == target_conv_id)
+            t_res = await db.execute(t_stmt)
+            target_conv = t_res.scalar_one_or_none()
+            if not target_conv:
+                return []
+            if target_conv.customer_id is not None:
+                if not authenticated_customer_id or str(target_conv.customer_id) != str(authenticated_customer_id):
+                    logger.warning(
+                        "Cross-customer conversation access in get_recent_history: conv owner=%s, requester=%s",
+                        target_conv.customer_id,
+                        authenticated_customer_id,
+                    )
+                    raise CrossCustomerRestorationError("Cross-customer conversation access is strictly forbidden.")
+            if target_conv.session_id != session_id:
+                if not (authenticated_customer_id and target_conv.customer_id and str(target_conv.customer_id) == str(authenticated_customer_id)):
+                    logger.warning(
+                        "Cross-session conversation access in get_recent_history: conv session=%s, requester session=%s",
+                        target_conv.session_id,
+                        session_id,
+                    )
+                    raise CrossCustomerRestorationError("Cross-session conversation access is strictly forbidden.")
+        else:
             conv_stmt = (
                 select(Conversation.id)
                 .where(Conversation.session_id == session_id)

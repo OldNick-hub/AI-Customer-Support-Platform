@@ -9,9 +9,30 @@ Provides strict, validated, typed schemas for:
 """
 
 from datetime import date, datetime
+from enum import Enum
 from typing import Any, Dict, List, Optional
 import uuid
 from pydantic import BaseModel, Field, field_validator
+
+
+class FinancialVerificationLevel(str, Enum):
+    """Explicit trust hierarchy for financial entity and reconciliation claims."""
+
+    EXTRACTED = "EXTRACTED"
+    DOCUMENT_CORROBORATED = "DOCUMENT_CORROBORATED"
+    PAYMENT_INDEPENDENTLY_VERIFIED = "PAYMENT_INDEPENDENTLY_VERIFIED"
+
+
+class TransactionIdentifierType(str, Enum):
+    """Categorized payment and transaction reference types."""
+
+    ORDER_ID = "ORDER_ID"
+    INVOICE_NUMBER = "INVOICE_NUMBER"
+    TRANSACTION_ID = "TRANSACTION_ID"
+    AUTHORIZATION_CODE = "AUTHORIZATION_CODE"
+    PAYMENT_REFERENCE = "PAYMENT_REFERENCE"
+    CHARGE_ID = "CHARGE_ID"
+    UNKNOWN = "UNKNOWN"
 
 
 class ReceiptLineItem(BaseModel):
@@ -49,6 +70,9 @@ class StructuredInvoiceData(BaseModel):
     product_price: Optional[float] = Field(default=None, description="Primary product price")
     merchant_name: Optional[str] = Field(default=None, description="Seller, store, vendor, or merchant organization name")
     line_items: List[ReceiptLineItem] = Field(default_factory=list, description="Itemized product purchase lines")
+    transaction_identifier_type: Optional[TransactionIdentifierType] = Field(
+        default=None, description="Preserved classification of extracted transaction reference"
+    )
 
     # Confidence and Validation Meta
     overall_confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Aggregate extraction confidence")
@@ -62,6 +86,7 @@ class StructuredInvoiceData(BaseModel):
     pages: List[PageExtractionMetadata] = Field(default_factory=list, description="Per-page extraction breakdown")
     is_scanned: bool = Field(default=False, description="True if document required OCR instead of embedded digital text")
     provider_used: str = Field(default="mock", description="OCR or extraction engine that parsed the document")
+    sha256_hash: Optional[str] = Field(default=None, description="SHA-256 hash of the evidence file payload")
     pii_redacted_text: str = Field(default="", description="Full extracted text with customer PII sanitized")
 
 
@@ -78,6 +103,7 @@ class EvidenceUploadResponse(BaseModel):
     status: str = Field(..., description="Processing status ('STAGED', 'ANALYZING', 'VERIFIED', 'FLAGGED_UNSAFE')")
     is_malicious: bool = Field(default=False, description="True if document triggered visual prompt injection or malware rules")
     quarantine_reason: Optional[str] = Field(default=None, description="Reason if document was flagged unsafe")
+    processing_error: Optional[str] = Field(default=None, description="Optional error or timeout note")
     retention_expires_at: datetime = Field(..., description="30-day retention expiration timestamp (UTC)")
     created_at: datetime = Field(..., description="Upload timestamp (UTC)")
     structured_entities: Optional[StructuredInvoiceData] = Field(
@@ -128,11 +154,50 @@ class EvidenceExtractionResponse(BaseModel):
     entities: StructuredInvoiceData
 
 
+class EvidenceListItem(BaseModel):
+    """Sanitized evidence list summary item for agent/staff review."""
+
+    id: str
+    evidence_id: str
+    conversation_id: Optional[str] = None
+    customer_id: Optional[str] = None
+    message_id: Optional[str] = None
+    ticket_id: Optional[str] = None
+    file_name: str
+    file_type: str = "UNKNOWN"
+    file_size_bytes: int
+    mime_type: str
+    classification: str = "EVIDENCE"
+    verification_status: str = "STAGED"
+    status: str = "STAGED"
+    uploaded_at: datetime
+    created_at: datetime
+    processed_at: Optional[datetime] = None
+    is_quarantined: bool = False
+    is_malicious: bool = False
+    quarantine_reason: Optional[str] = None
+    processing_error: Optional[str] = None
+    ocr_extracted_text: Optional[str] = None
+    sha256_hash: Optional[str] = None
+    retention_expires_at: Optional[datetime] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class EvidenceListResponse(BaseModel):
+    """Paginated collection of authorized evidence records."""
+
+    items: List[EvidenceListItem]
+    total_count: int
+    limit: int
+    offset: int
+
+
 class ReconciliationRequest(BaseModel):
     """Payload to initiate reconciliation of conversational claim against document evidence."""
 
     conversation_id: str = Field(..., description="Target conversation UUID")
     evidence_id: str = Field(..., description="Target evidence file UUID")
+    secondary_evidence_id: Optional[str] = Field(default=None, description="Optional secondary evidence file UUID for multi-document verification")
     claim_text: str = Field(..., min_length=1, description="Customer statement or assertion to verify")
     message_id: Optional[str] = Field(default=None, description="Optional associated message UUID")
     idempotency_key: Optional[str] = Field(default=None, description="Optional idempotency key to prevent duplicate runs")
@@ -144,6 +209,7 @@ class ReconciliationResponse(BaseModel):
 
     verification_id: str
     evidence_id: str
+    secondary_evidence_id: Optional[str] = None
     conversation_id: str
     message_id: Optional[str] = None
     job_id: Optional[str] = None
@@ -156,7 +222,17 @@ class ReconciliationResponse(BaseModel):
     clarification_prompt: Optional[str] = None
     field_comparisons: List[Dict[str, Any]] = Field(default_factory=list)
     extracted_claims: List[Dict[str, Any]] = Field(default_factory=list)
+    security_flags: List[str] = Field(default_factory=list)
     is_quarantined: bool = False
+    verification_level: FinancialVerificationLevel = FinancialVerificationLevel.DOCUMENT_CORROBORATED
+    is_refund_authorized: bool = Field(
+        default=False,
+        description="Whether a financial refund is authorized. Document-level corroboration alone CANNOT authorize refunds.",
+    )
+    requires_authoritative_verification: bool = Field(
+        default=True,
+        description="Whether external gateway settlement or human review is required before refund execution.",
+    )
     created_at: Optional[datetime] = None
     processing_started_at: Optional[datetime] = None
     verified_at: Optional[datetime] = None

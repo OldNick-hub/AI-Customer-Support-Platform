@@ -32,6 +32,49 @@ from app.services.pii_masker import PIIMasker, get_pii_masker
 
 logger = logging.getLogger(__name__)
 
+SUPPORTED_SENTIMENT_TONES: Dict[str, str] = {
+    "frustrated": (
+        "TONE DIRECTIVE: The customer is experiencing frustration. Adopt a calm, concise, and empathetic tone. "
+        "Acknowledge their inconvenience respectfully in one brief sentence, then directly provide the factual answer "
+        "and the clear next actionable step. DO NOT promise unauthorized refunds, policy exceptions, fee waivers, or deadlines not supported by authoritative data."
+    ),
+    "urgent": (
+        "TONE DIRECTIVE: The customer's inquiry is time-sensitive or urgent. Prioritize maximum clarity and directness. "
+        "State the immediate answer and next actionable step prominently at the beginning of your response. "
+        "Avoid unnecessary conversational filler while remaining courteous."
+    ),
+    "negative": (
+        "TONE DIRECTIVE: The customer is reporting an issue or dissatisfaction. Maintain a supportive, helpful, and solution-oriented tone. "
+        "Focus on delivering clear, actionable instructions grounded strictly in authoritative policy."
+    ),
+    "sarcastic": (
+        "TONE DIRECTIVE: The customer is expressing skepticism or frustration through sarcasm. Maintain absolute professionalism, "
+        "neutrality, and patience. Do not mirror sarcasm or express defensiveness. Provide the direct factual answer clearly."
+    ),
+    "positive": (
+        "TONE DIRECTIVE: The customer is satisfied or appreciative. Maintain a warm, courteous, and professional customer service tone."
+    ),
+    "neutral": (
+        "TONE DIRECTIVE: Maintain an objective, professional, and clear customer support tone."
+    ),
+}
+
+TONE_PRESERVATION_RULES: str = (
+    "MANDATORY FACTUAL AND POLICY PRESERVATION BOUNDARIES:\n"
+    "1. Tone directives dictate ONLY conversational demeanor, empathy, and phrasing style.\n"
+    "2. Tone directives must NEVER alter, override, or compromise business rules, eligibility criteria, fees, return windows, or deadlines.\n"
+    "3. NEVER promise or authorize refunds, compensation, or policy exemptions not explicitly verified in <authoritative_data>.\n"
+    "4. All factual claims and policy rules MUST retain exact bracketed citations (e.g. [1], [2]).\n"
+    "5. A customer's frustration or urgency must NEVER change the substantive answer or business outcome."
+)
+
+
+def get_tone_directive(sentiment_class: Optional[str]) -> str:
+    """Returns a controlled tone directive for a given sentiment class."""
+    key = (sentiment_class or "neutral").lower().strip()
+    return SUPPORTED_SENTIMENT_TONES.get(key, SUPPORTED_SENTIMENT_TONES["neutral"])
+
+
 SYSTEM_INSTRUCTION = """You are the enterprise Knowledge Assistant for Intelligent Customer Support.
 Your mission is to answer customer questions strictly, exclusively, and accurately based on the factual data provided in the <authoritative_data> block.
 
@@ -166,10 +209,36 @@ class GroundedAnswerGenerator:
 
         return citations
 
+    def _format_history_block(self, conversation_history: Optional[List[Dict[str, str]]]) -> str:
+        """Formats up to 10 recent turns with delimiter sanitization and PII masking."""
+        if not conversation_history:
+            return ""
+        lines: List[str] = []
+        for turn in conversation_history[-10:]:
+            role = str(turn.get("role") or "CUSTOMER").upper()
+            raw_content = str(turn.get("content") or "").strip()
+            if not raw_content:
+                continue
+            masked = self.pii_masker.mask(raw_content).masked_text
+            clean = self._sanitize_customer_query(masked)
+            if clean:
+                lines.append(f"{role}: {clean}")
+        if not lines:
+            return ""
+        return (
+            "<conversation_history>\n"
+            + "\n".join(lines)
+            + "\n</conversation_history>\n"
+            + "Use <conversation_history> ONLY for conversational continuity and resolving follow-up references. "
+            + "All factual or policy claims MUST come strictly from <authoritative_data> with citations [1], [2].\n\n"
+        )
+
     async def generate_answer(
         self,
         retrieval_result: RetrievalResult,
         query_override: Optional[str] = None,
+        tone_directive: Optional[str] = None,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> RAGResolutionResult:
         """Executes evidence-grounded answer generation with claim verification and remediation."""
         start_time = time.perf_counter()
@@ -217,13 +286,24 @@ class GroundedAnswerGenerator:
                 retrieval_result, "INSUFFICIENT_EVIDENCE", msg, gen_lat, start_time
             )
 
-        # 3. Construct evidence block and sanitized user prompt
+        # 3. Construct evidence block and sanitized user prompt with controlled tone guidance
         formatted_evidence = CitationManager.format_evidence_context(retrieval_result.chunks)
         sanitized_query = self._sanitize_customer_query(query)
 
+        tone_block = ""
+        if tone_directive:
+            tone_block = (
+                f"\n\n<tone_guidance>\n"
+                f"{tone_directive}\n\n"
+                f"{TONE_PRESERVATION_RULES}\n"
+                f"</tone_guidance>"
+            )
+
+        history_block = self._format_history_block(conversation_history)
         user_prompt = (
             f"<authoritative_data>\n{formatted_evidence}\n</authoritative_data>\n\n"
-            f"Customer Question: {sanitized_query}"
+            f"{history_block}"
+            f"Customer Question: {sanitized_query}{tone_block}"
         )
 
         # 4. Invoke LLM Gateway (Attempt 1)
@@ -236,6 +316,13 @@ class GroundedAnswerGenerator:
             )
             raw_text = llm_response.content or ""
             model_name = llm_response.model or model_name
+        except LLMAuthenticationError as exc:
+            logger.error("LLM authentication failure during answer generation: %s", exc)
+            gen_lat = (time.perf_counter() - start_time) * 1000
+            msg = "The AI generation service is unavailable due to an authentication or API key configuration issue."
+            return self._build_refusal_response(
+                retrieval_result, "LLM_AUTH_ERROR", msg, gen_lat, start_time
+            )
         except LLMTimeoutError:
             logger.warning("LLM generation timed out during answer generation.")
             gen_lat = (time.perf_counter() - start_time) * 1000
@@ -310,7 +397,8 @@ class GroundedAnswerGenerator:
             f"3. Every factual sentence MUST include a bracketed citation [X].\n"
             f"4. Do NOT cite document codes or citation numbers that do not appear in the context.\n\n"
             f"<authoritative_data>\n{formatted_evidence}\n</authoritative_data>\n\n"
-            f"Customer Question: {sanitized_query}"
+            f"{history_block}"
+            f"Customer Question: {sanitized_query}{tone_block}"
         )
 
         try:

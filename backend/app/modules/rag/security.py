@@ -76,6 +76,7 @@ SUPPORTED_STAFF_ROLES: Set[str] = {
 class SecurityContext(BaseModel):
     """Server-side authenticated identity and authorization context."""
 
+    tenant_id: str = Field(default="default", description="Authoritative multi-tenant isolation partition")
     user_id: Optional[str] = None
     customer_id: Optional[str] = None
     session_id: Optional[str] = None
@@ -229,7 +230,11 @@ class SecurityContextResolver:
         if purchased_products and isinstance(purchased_products, list):
             permitted_product_lines = {p.upper() for p in purchased_products if isinstance(p, str)}
 
+        customer_meta = getattr(customer, "metadata_", {}) or {}
+        cust_tenant_id = customer_meta.get("tenant_id") or getattr(customer, "tenant_id", "default")
+
         return SecurityContext(
+            tenant_id=cust_tenant_id,
             user_id=None,
             customer_id=str(customer.id),
             session_id=str(sess_record.id),
@@ -297,9 +302,12 @@ class SecurityContextResolver:
                 detail={"identifier": user_id_or_email, "unsupported_roles": sorted(list(unsupported))},
             )
 
+        staff_tenant_id = (jwt_claims or {}).get("tenant_id") or "default"
+
         # 3. Explicit ADMIN role
         if "ADMIN" in role_names:
             return SecurityContext(
+                tenant_id=staff_tenant_id,
                 user_id=str(user.id),
                 customer_id=None,
                 session_id=None,
@@ -340,6 +348,7 @@ class SecurityContextResolver:
         # 4. Explicit SUPERVISOR role
         if "SUPERVISOR" in role_names:
             return SecurityContext(
+                tenant_id=staff_tenant_id,
                 user_id=str(user.id),
                 customer_id=None,
                 session_id=None,
@@ -379,6 +388,7 @@ class SecurityContextResolver:
                 permitted_products = {s.upper() for s in user.skills if isinstance(s, str)}
 
             return SecurityContext(
+                tenant_id=staff_tenant_id,
                 user_id=str(user.id),
                 customer_id=None,
                 session_id=None,
@@ -406,37 +416,39 @@ class SecurityContextResolver:
         session_token: Optional[str] = None,
         jwt_claims: Optional[Dict[str, Any]] = None,
         user_id_or_email: Optional[str] = None,
+        tenant_id: Optional[str] = None,
     ) -> SecurityContext:
         """Unified resolver that prioritizes staff JWT, then customer session, then anonymous.
 
         NEVER accepts client-specified access_level, role, or permitted_regions from untrusted payloads.
         """
         # If staff identifier provided or JWT claims with staff subject
+        sec_ctx: SecurityContext
         if user_id_or_email:
-            return await cls.resolve_from_staff_user(
+            sec_ctx = await cls.resolve_from_staff_user(
                 session=session,
                 user_id_or_email=user_id_or_email,
                 jwt_claims=jwt_claims,
             )
-
-        if jwt_claims and "sub" in jwt_claims:
-            return await cls.resolve_from_staff_user(
+        elif jwt_claims and "sub" in jwt_claims:
+            sec_ctx = await cls.resolve_from_staff_user(
                 session=session,
                 user_id_or_email=jwt_claims["sub"],
                 jwt_claims=jwt_claims,
             )
-
-        # If customer session token provided
-        if session_token is not None:
+        elif session_token is not None:
             if not str(session_token).strip():
                 raise RAGAuthorizationError(
                     message="Supplied customer session token is empty or malformed."
                 )
-            return await cls.resolve_from_customer_session(
+            sec_ctx = await cls.resolve_from_customer_session(
                 session=session,
                 session_token=session_token,
             )
+        else:
+            sec_ctx = cls.resolve_anonymous()
 
-        # Fallback to safe anonymous context
-        return cls.resolve_anonymous()
+        if tenant_id:
+            sec_ctx.tenant_id = tenant_id
+        return sec_ctx
 

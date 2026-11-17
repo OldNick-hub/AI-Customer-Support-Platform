@@ -4,6 +4,7 @@ Provides centralized, type-safe settings management via Pydantic BaseSettings.
 All configuration parameters are read from environment variables or .env files.
 """
 
+import os
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus
 from pydantic import AliasChoices, Field, computed_field, field_validator
@@ -35,6 +36,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ENABLE_DEV_AUTH_ENDPOINTS: bool = True  # Safe local development persona endpoints
 
     # --- PostgreSQL Database ---
     POSTGRES_USER: str = "postgres"
@@ -91,6 +93,11 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("LLM_FALLBACK_PROVIDER", "FALLBACK_LLM_PROVIDER"),
         description="Fallback LLM provider name ('ollama' or 'none')",
     )
+    ENABLE_CARETAKER_FALLBACK: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("ENABLE_CARETAKER_FALLBACK", "CARETAKER_FALLBACK_ENABLED"),
+        description="Whether to generate empathetic AI customer care responses when specific KB records are not indexed",
+    )
     LLM_TIMEOUT_SECONDS: float = 30.0
     LLM_MAX_RETRIES: int = Field(
         default=3,
@@ -99,6 +106,11 @@ class Settings(BaseSettings):
     )
 
     # --- Vector Embeddings ---
+    EMBEDDING_PROVIDER: str = Field(
+        default="mock",
+        validation_alias=AliasChoices("EMBEDDING_PROVIDER"),
+        description="Active embedding provider: 'gemini', 'mock', or 'sentence_transformers'",
+    )
     EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
     EMBEDDING_DIMENSION: int = 384
     EMBEDDING_BATCH_SIZE: int = 32
@@ -113,8 +125,19 @@ class Settings(BaseSettings):
     REDIS_MAX_CONNECTIONS: int = 50
     REDIS_URL: Optional[str] = None
     REDIS_PUBSUB_INDEX_RELOAD_CHANNEL: str = "channel:knowledge:index_reload"
+    CELERY_BROKER_URL: Optional[str] = None
+    CELERY_RESULT_BACKEND: Optional[str] = None
+    CELERY_TASK_DEFAULT_QUEUE: str = "resolution_actions"
 
     # --- Storage & Knowledge Base Directories ---
+    STORAGE_PROVIDER: str = Field(
+        default="local",
+        validation_alias=AliasChoices("STORAGE_PROVIDER"),
+        description="Active storage provider: 'local' (filesystem) or 'postgres' (BYTEA)",
+    )
+    STORAGE_LOCAL_ROOT: str = "./storage"
+    STORAGE_MAX_QUOTA_BYTES: int = 400 * 1024 * 1024  # 400 MB hard application-level quota for staging
+    STORAGE_MAX_FILE_SIZE_BYTES: int = 15 * 1024 * 1024  # 15 MB max file upload size
     KNOWLEDGE_DOCS_DIR: str = "./storage/raw_documents"
     QUARANTINE_DIR: str = "./storage/quarantine"
     FAISS_STORAGE_DIR: str = "./storage/indices"
@@ -123,6 +146,12 @@ class Settings(BaseSettings):
     KB_SCAN_LOCK_TIMEOUT_SECONDS: float = 10.0
     KB_SCAN_ADVISORY_LOCK_ID: int = 5432001
     KB_PROMOTION_ADVISORY_LOCK_ID: int = 5432002
+    KB_RETRY_WORKER_ENABLED: bool = True
+    KB_RETRY_SCAN_INTERVAL_SECONDS: float = 30.0
+    KB_RETRY_LEASE_DURATION_SECONDS: float = 300.0
+    KB_RETRY_HEARTBEAT_INTERVAL_SECONDS: float = 30.0
+    KB_RETRY_MAX_OPERATIONAL_INTERRUPTIONS: int = 3
+    KB_RETRY_MAX_RETRIES: int = 3
 
     # --- Benchmark Quality Gate Settings ---
     BENCHMARK_GROUNDING_PASS_SCORE: float = 0.90
@@ -174,14 +203,71 @@ class Settings(BaseSettings):
         default_factory=lambda: ["image/jpeg", "image/png", "application/pdf"]
     )
     EVIDENCE_RETENTION_DAYS: int = 30
+    EVIDENCE_RETENTION_SCAN_INTERVAL_SECONDS: float = 3600.0
+    EVIDENCE_RETENTION_BATCH_SIZE: int = 50
+    EVIDENCE_RETENTION_MAX_RETRIES: int = 3
     EVIDENCE_SYNC_TIMEOUT_SECONDS: float = 30.0
     EVIDENCE_DEFAULT_OCR_PROVIDER: str = "auto"
+    ENABLE_BACKGROUND_WORKERS: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("ENABLE_BACKGROUND_WORKERS", "WORKERS_ENABLED"),
+        description="Whether to run in-process background worker loops (set False when using dedicated worker processes)",
+    )
+    REDIS_REQUIRED: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("REDIS_REQUIRED"),
+        description="Whether Redis connectivity is strictly mandatory for API readiness (HTTP 503 if unreachable)",
+    )
+
+    # --- HTTP Request Rate Limiting ---
+    RATE_LIMIT_ENABLED: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("RATE_LIMIT_ENABLED"),
+        description="Whether application-level HTTP request rate limiting is enabled",
+    )
+    RATE_LIMIT_CHAT_PER_MINUTE: int = Field(
+        default=30,
+        validation_alias=AliasChoices("RATE_LIMIT_CHAT_PER_MINUTE"),
+        description="Max chat turn queries per minute per client identity",
+    )
+    RATE_LIMIT_EVIDENCE_PER_MINUTE: int = Field(
+        default=10,
+        validation_alias=AliasChoices("RATE_LIMIT_EVIDENCE_PER_MINUTE"),
+        description="Max multimodal evidence uploads per minute per client identity",
+    )
+    TRUSTED_PROXIES: List[str] = Field(
+        default_factory=lambda: ["127.0.0.1", "::1"],
+        validation_alias=AliasChoices("TRUSTED_PROXIES"),
+        description="List of trusted reverse proxy IP addresses authorized to forward client IP headers",
+    )
 
     # --- RAG Knowledge Assistant Settings ---
     RAG_TOP_K: int = 5
     RAG_SIMILARITY_THRESHOLD_DEFAULT: float = 0.72
     RAG_SIMILARITY_THRESHOLD_POLICY: float = 0.76
     RAG_SIMILARITY_THRESHOLD_FAQ: float = 0.70
+
+    # --- Financial Resolution Safeguards & Smart INR Goodwill Credit Policy ---
+    DEFAULT_CURRENCY: str = "INR"
+    SUPPORTED_CURRENCIES: List[str] = ["INR", "USD", "EUR", "GBP", "CAD", "AUD", "JPY"]
+    DEFAULT_DISCREPANCY_REFUND_AMOUNT: str = "499.00"
+
+    # Smart INR Goodwill Credit Policy Thresholds & Caps
+    GOODWILL_CREDIT_STANDARD_DEFAULT: str = "499.00"
+    GOODWILL_CREDIT_STANDARD_MAX: str = "999.00"
+    GOODWILL_CREDIT_VIP_DEFAULT: str = "799.00"
+    GOODWILL_CREDIT_VIP_MAX: str = "1499.00"
+    GOODWILL_CREDIT_ENTERPRISE_DEFAULT: str = "999.00"
+    GOODWILL_CREDIT_ENTERPRISE_MAX: str = "2499.00"
+    GOODWILL_CREDIT_ORDER_VALUE_CAP_PERCENT: str = "10.00"  # Max 10% of order value
+
+    # Approval Matrix Thresholds (INR)
+    GOODWILL_AUTO_RECOMMEND_THRESHOLD: str = "499.00"      # <= 499 automated recommendation
+    GOODWILL_SUPERVISOR_THRESHOLD: str = "999.00"          # 500 - 999 Supervisor approval
+    GOODWILL_SENIOR_SUPERVISOR_THRESHOLD: str = "1499.00"  # 1000 - 1499 Senior Supervisor
+    # Above 1499 requires manual review (ADMIN role required)
+
+    MAX_AUTONOMOUS_REFUND_AMOUNT: str = "0.00"  # Strict zero: all refunds require supervisor approval
 
     # --- Chat Idempotency & HMAC Key Ring ---
     IDEMPOTENCY_HMAC_ACTIVE_VERSION: str = "v1"
@@ -211,11 +297,207 @@ class Settings(BaseSettings):
                     f"HMAC key for version '{ver}' must be at least 32 bytes (got {len(key.encode('utf-8'))} bytes)."
                 )
 
+    def validate_production_configuration(self) -> None:
+        """Enforces strict security lockdowns and configuration validation in production.
+
+        Fails fast if:
+        1. DEBUG is True.
+        2. ENABLE_DEV_AUTH_ENDPOINTS is True.
+        3. Insecure/placeholder SECRET_KEY or key length < 32 characters.
+        4. Insecure/placeholder ENCRYPTION_MASTER_KEY or invalid 64-hex-char representation.
+        5. Insecure/placeholder or empty POSTGRES_PASSWORD.
+        6. Wildcard '*' CORS_ORIGINS configured.
+        """
+        env = (self.ENVIRONMENT or "development").strip().lower()
+        if env not in ("production", "staging"):
+            return
+
+        errors: List[str] = []
+
+        if not getattr(self, "RATE_LIMIT_ENABLED", True):
+            errors.append(
+                "RATE_LIMIT_ENABLED must be set to True in production and staging environments."
+            )
+
+        if env != "production":
+            if errors:
+                formatted_errors = "\n  - " + "\n  - ".join(errors)
+                raise ValueError(
+                    f"Staging startup validation failed with {len(errors)} security error(s):{formatted_errors}"
+                )
+            return
+
+        if self.DEBUG:
+            errors.append("DEBUG mode must be set to False in production.")
+
+        if self.ENABLE_DEV_AUTH_ENDPOINTS:
+            errors.append("ENABLE_DEV_AUTH_ENDPOINTS must be set to False in production.")
+
+        sec_key = self.SECRET_KEY or ""
+        sec_lower = sec_key.lower()
+        if (
+            "change_this" in sec_lower
+            or "placeholder" in sec_lower
+            or "dev_secret" in sec_lower
+            or len(sec_key) < 32
+        ):
+            errors.append(
+                "Insecure or placeholder SECRET_KEY detected. A strong, random key of at least 32 characters is required."
+            )
+
+        enc_key = self.ENCRYPTION_MASTER_KEY or ""
+        enc_lower = enc_key.lower()
+        if (
+            "0123456789abcdef" in enc_lower
+            or "placeholder" in enc_lower
+            or len(enc_key) != 64
+        ):
+            errors.append(
+                "Insecure or invalid ENCRYPTION_MASTER_KEY detected. Must be a 64-character hex string (32 bytes)."
+            )
+        else:
+            try:
+                bytes.fromhex(enc_key)
+            except ValueError:
+                errors.append(
+                    "ENCRYPTION_MASTER_KEY is not a valid hexadecimal string."
+                )
+
+        db_pwd = self.POSTGRES_PASSWORD or ""
+        if not db_pwd or "placeholder" in db_pwd.lower():
+            errors.append(
+                "POSTGRES_PASSWORD must be configured with a non-empty, non-placeholder value in production."
+            )
+
+        if any(origin.strip() == "*" for origin in self.CORS_ORIGINS):
+            errors.append(
+                "Wildcard CORS_ORIGINS ('*') is prohibited in production when credentials are supported."
+            )
+
+        prov = (self.EMBEDDING_PROVIDER or "").strip().lower()
+        if prov == "mock":
+            errors.append(
+                "EMBEDDING_PROVIDER 'mock' is prohibited in production. "
+                "A live provider ('gemini') must be configured."
+            )
+        elif prov == "gemini":
+            if not (self.GEMINI_API_KEY or "").strip():
+                errors.append(
+                    "GEMINI_API_KEY must be configured with a non-empty value in production "
+                    "when EMBEDDING_PROVIDER is 'gemini'."
+                )
+
+        stor_prov = (self.STORAGE_PROVIDER or "").strip().lower()
+        if stor_prov == "local":
+            errors.append(
+                "STORAGE_PROVIDER 'local' is prohibited in production. "
+                "A persistent storage provider ('postgres') must be configured."
+            )
+
+        if errors:
+            formatted_errors = "\n  - " + "\n  - ".join(errors)
+            env_label = "Production" if env == "production" else "Staging"
+            raise ValueError(
+                f"{env_label} startup validation failed with {len(errors)} security error(s):{formatted_errors}"
+            )
+
+    def validate_embedding_configuration(self) -> None:
+        """Validates embedding provider selection and credentials by environment.
+
+        Enforces:
+        1. Staging and production explicitly reject EMBEDDING_PROVIDER='mock'.
+        2. Staging and production reject missing or empty GEMINI_API_KEY when EMBEDDING_PROVIDER='gemini'.
+        3. Unsupported EMBEDDING_PROVIDER names fail validation across all environments.
+        4. Development and testing environments allow 'mock' and 'gemini'.
+        """
+        env = (self.ENVIRONMENT or "development").strip().lower()
+        provider = (self.EMBEDDING_PROVIDER or "").strip().lower()
+
+        allowed_providers = ("gemini", "mock", "sentence_transformers")
+        if provider not in allowed_providers:
+            raise ValueError(
+                f"Unsupported EMBEDDING_PROVIDER '{self.EMBEDDING_PROVIDER}'. "
+                f"Must be one of: {', '.join(allowed_providers)}."
+            )
+
+        if env in ("staging", "production"):
+            if provider == "mock":
+                raise ValueError(
+                    f"EMBEDDING_PROVIDER 'mock' is prohibited in {env} environment. "
+                    "A production-grade embedding provider ('gemini') must be configured."
+                )
+            if provider == "gemini":
+                key = (self.GEMINI_API_KEY or "").strip()
+                if not key:
+                    raise ValueError(
+                        f"GEMINI_API_KEY is required in {env} environment when "
+                        "EMBEDDING_PROVIDER is 'gemini'."
+                    )
+
+    def validate_storage_configuration(self) -> None:
+        """Validates storage provider selection by environment.
+
+        Enforces:
+        1. Staging and production explicitly reject STORAGE_PROVIDER='local'.
+        2. Development and testing allow 'local' or 'postgres'.
+        3. Unsupported STORAGE_PROVIDER values fail validation across all environments.
+        """
+        env = (self.ENVIRONMENT or "development").strip().lower()
+        provider = (self.STORAGE_PROVIDER or "").strip().lower()
+
+        allowed_providers = ("local", "postgres")
+        if provider not in allowed_providers:
+            raise ValueError(
+                f"Unsupported STORAGE_PROVIDER '{self.STORAGE_PROVIDER}'. "
+                f"Must be one of: {', '.join(allowed_providers)}."
+            )
+
+        if env in ("staging", "production") and provider == "local":
+            raise ValueError(
+                f"STORAGE_PROVIDER 'local' is prohibited in {env} environment. "
+                "A persistent storage provider ('postgres') must be configured."
+            )
+
     def __init__(self, **data: Any) -> None:
+        # Resolve default STORAGE_PROVIDER based on environment if not explicitly passed
+        env = (data.get("ENVIRONMENT") or os.environ.get("ENVIRONMENT") or "development").strip().lower()
+        if "STORAGE_PROVIDER" not in data and "STORAGE_PROVIDER" not in os.environ:
+            if env in ("staging", "production"):
+                data["STORAGE_PROVIDER"] = "postgres"
+            else:
+                data["STORAGE_PROVIDER"] = "local"
         super().__init__(**data)
         self.validate_idempotency_hmac_key_ring()
+        self.validate_embedding_configuration()
+        self.validate_storage_configuration()
+        self.validate_production_configuration()
 
     # --- Validators ---
+    @field_validator("STORAGE_PROVIDER")
+    @classmethod
+    def validate_storage_provider(cls, v: str) -> str:
+        if not v or not isinstance(v, str):
+            raise ValueError("STORAGE_PROVIDER must be a non-empty string.")
+        v_norm = v.strip().lower()
+        allowed = ("local", "postgres")
+        if v_norm not in allowed:
+            raise ValueError(
+                f"Unsupported STORAGE_PROVIDER '{v}'. Must be one of: {', '.join(allowed)}."
+            )
+        return v_norm
+
+    @field_validator("EMBEDDING_PROVIDER")
+    @classmethod
+    def validate_embedding_provider(cls, v: str) -> str:
+        if not v or not isinstance(v, str):
+            raise ValueError("EMBEDDING_PROVIDER must be a non-empty string.")
+        v_norm = v.strip().lower()
+        allowed = ("gemini", "mock", "sentence_transformers")
+        if v_norm not in allowed:
+            raise ValueError(
+                f"Unsupported EMBEDDING_PROVIDER '{v}'. Must be one of: {', '.join(allowed)}."
+            )
+        return v_norm
     @field_validator("PRIMARY_LLM_PROVIDER")
     @classmethod
     def validate_primary_llm_provider(cls, v: str) -> str:
@@ -253,6 +535,26 @@ class Settings(BaseSettings):
         if v < 0:
             raise ValueError("LLM_MAX_RETRIES cannot be negative.")
         return v
+
+    @field_validator("TRUSTED_PROXIES", mode="before")
+    @classmethod
+    def parse_trusted_proxies(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            v_clean = v.strip()
+            if not v_clean:
+                return ["127.0.0.1", "::1"]
+            if v_clean.startswith("[") and v_clean.endswith("]"):
+                try:
+                    import json
+                    parsed = json.loads(v_clean)
+                    if isinstance(parsed, list):
+                        return [str(x).strip() for x in parsed if str(x).strip()]
+                except Exception:
+                    pass
+            return [x.strip() for x in v_clean.split(",") if x.strip()]
+        if isinstance(v, (list, tuple, set)):
+            return [str(x).strip() for x in v if str(x).strip()]
+        return ["127.0.0.1", "::1"]
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -350,3 +652,45 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def validate_production_environment(settings_obj: Optional[Settings] = None) -> List[str]:
+    """Inspects settings and returns a list of security configuration errors without raising."""
+    cfg = settings_obj or settings
+    errors: List[str] = []
+    if cfg.DEBUG:
+        errors.append("DEBUG is True (must be False in production).")
+    if cfg.ENABLE_DEV_AUTH_ENDPOINTS:
+        errors.append("ENABLE_DEV_AUTH_ENDPOINTS is True (must be False in production).")
+    sec_key = cfg.SECRET_KEY or ""
+    sec_lower = sec_key.lower()
+    if (
+        "change_this" in sec_lower
+        or "placeholder" in sec_lower
+        or "dev_secret" in sec_lower
+        or len(sec_key) < 32
+    ):
+        errors.append("SECRET_KEY is insecure, placeholder, or shorter than 32 characters.")
+    enc_key = cfg.ENCRYPTION_MASTER_KEY or ""
+    enc_lower = enc_key.lower()
+    if (
+        "0123456789abcdef" in enc_lower
+        or "placeholder" in enc_lower
+        or len(enc_key) != 64
+    ):
+        errors.append("ENCRYPTION_MASTER_KEY is insecure, placeholder, or not a 64-character hex string.")
+    db_pwd = cfg.POSTGRES_PASSWORD or ""
+    if not db_pwd or "placeholder" in db_pwd.lower():
+        errors.append("POSTGRES_PASSWORD is empty or contains placeholder text.")
+    if any(origin.strip() == "*" for origin in cfg.CORS_ORIGINS):
+        errors.append("CORS_ORIGINS contains wildcard '*' (prohibited with credentials in production).")
+    if getattr(cfg, "EMBEDDING_PROVIDER", "").lower() == "mock":
+        errors.append("EMBEDDING_PROVIDER 'mock' is prohibited in production.")
+    if getattr(cfg, "EMBEDDING_PROVIDER", "").lower() == "gemini" and not (cfg.GEMINI_API_KEY or "").strip():
+        errors.append("GEMINI_API_KEY is required when EMBEDDING_PROVIDER is 'gemini'.")
+    if getattr(cfg, "STORAGE_PROVIDER", "").lower() == "local":
+        errors.append("STORAGE_PROVIDER 'local' is prohibited in production.")
+    if not getattr(cfg, "RATE_LIMIT_ENABLED", True):
+        errors.append("RATE_LIMIT_ENABLED is False (must be True in production and staging).")
+    return errors
+

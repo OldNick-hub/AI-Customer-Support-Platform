@@ -12,6 +12,7 @@ from app.modules.evidence.schemas import (
     PageExtractionMetadata,
     ReceiptLineItem,
     StructuredInvoiceData,
+    TransactionIdentifierType,
 )
 
 
@@ -190,9 +191,27 @@ class RuleBasedReceiptParser:
         else:
             overall_conf = 0.0
 
+        tx_type = None
+        ref = invoice_number or order_id
+        if ref:
+            cleaned = str(ref).strip().upper()
+            if any(cleaned.startswith(p) for p in ("AUTH", "APPR")):
+                tx_type = TransactionIdentifierType.AUTHORIZATION_CODE
+            elif any(cleaned.startswith(p) for p in ("TXN", "TRANS", "TX")):
+                tx_type = TransactionIdentifierType.TRANSACTION_ID
+            elif any(cleaned.startswith(p) for p in ("PAY", "REF")):
+                tx_type = TransactionIdentifierType.PAYMENT_REFERENCE
+            elif any(cleaned.startswith(p) for p in ("CHG",)):
+                tx_type = TransactionIdentifierType.CHARGE_ID
+            elif any(cleaned.startswith(p) for p in ("INV", "INVOICE")):
+                tx_type = TransactionIdentifierType.INVOICE_NUMBER
+            elif any(cleaned.startswith(p) for p in ("ORD", "ORDER")):
+                tx_type = TransactionIdentifierType.ORDER_ID
+
         return StructuredInvoiceData(
             order_id=order_id,
             invoice_number=invoice_number,
+            transaction_identifier_type=tx_type,
             invoice_date=inv_date,
             transaction_date=trans_date,
             total_amount=total_amount,

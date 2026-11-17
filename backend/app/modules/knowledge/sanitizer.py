@@ -75,6 +75,7 @@ class SanitizationResult(BaseModel):
     quarantine_path: Optional[str] = None
 
     # Extracted metadata from document structure
+    tenant_id: str = "default"
     document_code: Optional[str] = None
     title: Optional[str] = None
     category: Optional[str] = None
@@ -340,6 +341,7 @@ class IngestionSanitizer:
     def extract_structural_metadata(self, text: str, file_name: str) -> Dict[str, str]:
         """Extracts document_code, title, category, region, and access level from content or filename."""
         metadata: Dict[str, str] = {
+            "tenant_id": "default",
             "document_code": Path(file_name).stem,
             "title": Path(file_name).stem.replace("-", " ").replace("_", " ").title(),
             "category": "POLICY",
@@ -598,6 +600,7 @@ class IngestionSanitizer:
             is_quarantined=False,
             original_text=raw_text,
             sanitized_text=sanitized_derivative,
+            tenant_id=metadata.get("tenant_id", "default"),
             document_code=metadata["document_code"],
             title=metadata["title"],
             category=metadata["category"],
