@@ -68,14 +68,50 @@ class LanguageDetector:
     LATIN_PATTERN = re.compile(r"[a-zA-Z\u00C0-\u024F]")
     WORD_SPLIT_PATTERN = re.compile(r"\b\w+\b")
 
+    HINDI_CORE_MARKERS: Set[str] = {
+        "mera", "meri", "mere", "mujhe", "tujhe", "humein", "humey", "hamara", "hamari", "hamare",
+        "apna", "apne", "apni", "kya", "nahi", "nahin", "nhi", "chahiye", "hoga", "hogi", "hoge",
+        "hai", "hain", "h", "karo", "kar", "karein", "karna", "karni", "karne", "karwana",
+        "karwani", "karwane", "karwa", "karega", "karegi", "karenge", "kijiye", "diya",
+        "bhai", "kitna", "kitni", "kitne", "kab", "kripya", "kaise", "batao", "batayein", "bhejo",
+        "bhejna", "badalna", "badal", "badlo", "kare", "lena", "dena", "liya", "rakha",
+        "rakho", "rahenge", "aur", "pe", "mein", "se", "tak", "aayega", "aayegi",
+        "aaya", "aayi", "milega", "mili", "mile", "paisa", "rupaye", "wapas", "namaste", "namaskar",
+        "dhanyawad", "dhanyavaad", "shukriya", "theek", "alvida", "abhi", "koi", "kuch", "kaha",
+        "kahan", "yahan", "wahan", "aaj", "kal", "parso", "bhi", "sirf", "naam", "baat", "samajh",
+        "bheja", "gaya", "gayi", "hogyi", "hogaya", "hua", "hui", "hue", "tha", "thi",
+        "lekin", "magar", "kyun", "kyu", "kaun", "kaisa", "kaisi", "sab", "sabh", "sabka", "thoda",
+        "zyada", "jyada", "kam", "jaldi", "turant", "phir", "fir", "baad", "pehle", "upar",
+        "neeche", "dekho", "dekha", "dekh", "suno", "sun", "bol", "bolo", "bola", "raha", "rahi",
+        "rahe", "dikh", "dikha", "dikhta", "dikhti", "jese", "jaise", "waise", "wese", "aise",
+        "ab", "abh", "chal", "chala", "chalo", "paas", "pass", "bhej", "arey", "arre",
+        "toota", "tooti", "kharab", "nikla", "nikli", "ek", "teen", "chaar", "char",
+        "paanch", "panch", "dikkat", "kardo",
+    }
+
     # High-frequency characteristic stopword & lexical marker lexicons
     LEXICONS: Dict[str, Set[str]] = {
         "hi_latn": {
-            "mera", "meri", "mere", "kya", "nahi", "nahin", "chahiye", "hoga", "hogi", "hoge",
-            "hai", "hain", "ho", "karo", "kar", "diya", "de", "do", "bhai", "kitna", "kitni",
-            "kitne", "kab", "kripya", "kaise", "batao", "bhejo", "aur", "pe", "mein", "ko",
-            "se", "tak", "aayega", "aayegi", "milega", "paisa", "rupaye", "wapas",
-            "namaste", "namaskar", "dhanyawad", "dhanyavaad", "shukriya", "theek", "alvida",
+            "mera", "meri", "mere", "mujhe", "tujhe", "humein", "humey", "hamara", "hamari", "hamare",
+            "apna", "apne", "apni", "kya", "nahi", "nahin", "nhi", "chahiye", "hoga", "hogi", "hoge",
+            "hai", "hain", "ho", "h", "karo", "kar", "karein", "karna", "karni", "karne", "karwana",
+            "karwani", "karwane", "karwa", "karega", "karegi", "karenge", "kijiye", "diya", "de", "do",
+            "bhai", "kitna", "kitni", "kitne", "kab", "kripya", "kaise", "batao", "batayein", "bhejo",
+            "bhejna", "badalna", "badal", "badlo", "kare", "le", "lo", "lena", "dena", "liya", "rakha",
+            "rakho", "rahenge", "aur", "pe", "par", "mein", "ko", "se", "tak", "aayega", "aayegi",
+            "aaya", "aayi", "milega", "mili", "mile", "paisa", "rupaye", "wapas", "namaste", "namaskar",
+            "dhanyawad", "dhanyavaad", "shukriya", "theek", "alvida", "abhi", "koi", "kuch", "kaha",
+            "kahan", "yahan", "wahan", "aaj", "kal", "parso", "bhi", "sirf", "naam", "baat", "samajh",
+            "bheja", "gaya", "gayi", "hogyi", "hogaya", "hua", "hui", "hue", "tha", "thi", "the",
+            "lekin", "magar", "kyun", "kyu", "kaun", "kaisa", "kaisi", "sab", "sabh", "sabka", "thoda",
+            "zyada", "jyada", "kam", "jaldi", "turant", "phir", "fir", "baad", "pehle", "upar",
+            "neeche", "dekho", "dekha", "dekh", "suno", "sun", "bol", "bolo", "bola", "raha", "rahi",
+            "rahe", "dikh", "dikha", "dikhta", "dikhti", "jese", "jaise", "waise", "wese", "aise",
+            "ab", "abh", "chal", "chala", "chalo", "paas", "pass", "bhej", "arey", "arre", "are",
+            "toota", "tooti", "kharab", "nikla", "nikli", "ek", "do", "teen", "chaar", "char",
+            "paanch", "panch", "order", "parcel", "replace", "refund", "return", "delivery", "track",
+            "package", "items", "item", "box", "screen", "news", "update", "updates", "problem",
+            "dikkat", "help", "kardo", "kardo", "plz", "pls",
         },
         "es": {
             "el", "la", "de", "que", "y", "en", "un", "una", "por", "para", "con", "no", "es",
@@ -122,6 +158,9 @@ class LanguageDetector:
             "initial", "question", "restrict", "gap", "del", "null", "seq", "auth",
             "inquiry", "causing", "crash", "restricted", "admin", "document", "internal",
             "historical", "filtered", "conflict",
+            "news", "update", "updates", "status", "parcel", "package", "due", "date",
+            "number", "id", "wait", "waiting", "pls", "plz", "thx", "thnx", "tks",
+            "reply", "replies", "answer", "respond", "response", "contact", "human",
         },
     }
 
@@ -215,14 +254,25 @@ class LanguageDetector:
         # ----------------------------------------------------------------------
         # Count hits in each language lexicon
         hits: Dict[str, int] = {lang: 0 for lang in self.LEXICONS}
+        hindi_core_hits = 0
         for w in words:
+            if w in self.HINDI_CORE_MARKERS:
+                hindi_core_hits += 1
             for lang, vocab in self.LEXICONS.items():
                 if w in vocab:
                     hits[lang] += 1
 
-        # Check Hinglish first if significant markers exist
+        # Check Hinglish first: requires at least one core grammatical marker OR preferred_language == hi
         hinglish_hits = hits["hi_latn"]
-        if hinglish_hits >= 2 or (word_count <= 3 and hinglish_hits >= 1 and hits["en"] == 0):
+        euro_hits = hits["es"] + hits["fr"] + hits["de"]
+        is_hinglish = False
+        if hindi_core_hits >= 1 and (hinglish_hits > euro_hits):
+            if (hinglish_hits >= hits["en"]) or (hindi_core_hits >= 2) or (word_count <= 4):
+                is_hinglish = True
+        elif preferred_language in ("hi", "hi_latn", "hinglish") and (hinglish_hits >= 1 or hindi_core_hits >= 1) and (hinglish_hits >= euro_hits):
+            is_hinglish = True
+
+        if is_hinglish:
             density = hinglish_hits / word_count
             conf = min(0.96, 0.85 + density * 0.11)
             return LanguageDetectionResult(
@@ -287,7 +337,7 @@ class LanguageDetector:
         # If user explicitly preferred a supported language and input has no contradictory signal
         if preferred_language and preferred_language.lower() in SUPPORTED_LANGUAGES:
             pref = preferred_language.lower()
-            if max_hits == 0 and word_count <= 3:
+            if max_hits == 0 and word_count <= 6:
                 # Short ambiguous greeting/acknowledgment with user preferred language
                 return LanguageDetectionResult(
                     detected_language=pref,

@@ -101,7 +101,7 @@ export const ConversationsView: React.FC = () => {
   const [sendingMessage, setSendingMessage] = useState<boolean>(false);
 
   // Settings & Controls
-  const [selectedLang, setSelectedLang] = useState<string>('en');
+  const [selectedLang, setSelectedLang] = useState<string>('auto');
 
   // Ticket Synthesis & Clarification State
   const [linkedTicket, setLinkedTicket] = useState<TicketListItem | null>(null);
@@ -124,13 +124,13 @@ export const ConversationsView: React.FC = () => {
     );
 
   // Auto-scroll messages to bottom
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (instant = false) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: instant ? 'auto' : 'smooth' });
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, sendingMessage]);
 
   // Load Synthesis and Clarification Data
   const loadSynthesis = useCallback(async (ticketId: string) => {
@@ -199,14 +199,29 @@ export const ConversationsView: React.FC = () => {
             normalizedSender = 'SYSTEM';
           }
 
+          const isHinglish =
+            m.detected_language === 'hi_latn' ||
+            m.detected_language === 'hinglish' ||
+            (m.detected_language === 'hi' && (!m.content || !/[\u0900-\u097F]/.test(m.content)));
+
           return {
             id: m.id,
             sender_type: normalizedSender,
             content: m.content,
             created_at: timeDisplay,
             turn_sequence_number: m.turn_sequence_number,
-            language: m.detected_language,
+            language: isHinglish ? 'HINGLISH' : m.detected_language,
           };
+        });
+
+        // Ensure deterministic chronological ordering: Customer turn always precedes AI reply
+        mapped.sort((a, b) => {
+          if (a.turn_sequence_number != null && b.turn_sequence_number != null && a.turn_sequence_number !== b.turn_sequence_number) {
+            return a.turn_sequence_number - b.turn_sequence_number;
+          }
+          if (a.sender_type === 'CUSTOMER' && b.sender_type !== 'CUSTOMER') return -1;
+          if (a.sender_type !== 'CUSTOMER' && b.sender_type === 'CUSTOMER') return 1;
+          return 0;
         });
 
         setMessages(mapped);
@@ -226,7 +241,7 @@ export const ConversationsView: React.FC = () => {
 
   // Fetch conversations list
   const fetchConversations = useCallback(
-    async (preserveSelectedId?: string | null) => {
+    async (preserveSelectedId?: string | null, skipReloadMessages: boolean = false) => {
       setIsLoadingConversations(true);
       setConversationsError(null);
       try {
@@ -237,11 +252,15 @@ export const ConversationsView: React.FC = () => {
         const targetId = preserveSelectedId ?? selectedConversationId;
         if (targetId && res.items.some((c) => c.id === targetId)) {
           setSelectedConversationId(targetId);
-          loadMessages(targetId);
-        } else if (res.items.length > 0 && targetId === undefined) {
+          if (!skipReloadMessages) {
+            loadMessages(targetId);
+          }
+        } else if (res.items.length > 0 && !targetId) {
           const firstId = res.items[0].id;
           setSelectedConversationId(firstId);
-          loadMessages(firstId);
+          if (!skipReloadMessages) {
+            loadMessages(firstId);
+          }
         }
       } catch (err: any) {
         const msg =
@@ -395,10 +414,11 @@ export const ConversationsView: React.FC = () => {
       sender_type: 'CUSTOMER',
       content: query,
       created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      language: selectedLang,
+      language: selectedLang === 'auto' ? '...' : selectedLang.toUpperCase(),
     };
     setMessages((prev) => [...prev, custMsg]);
     setSendingMessage(true);
+    setTimeout(() => scrollToBottom(), 50);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -409,7 +429,7 @@ export const ConversationsView: React.FC = () => {
         {
           message: query,
           conversation_id: selectedConversationId || undefined,
-          preferred_language: selectedLang,
+          preferred_language: selectedLang === 'auto' ? undefined : selectedLang,
           idempotency_key: idempotencyKey,
         },
         controller.signal
@@ -417,22 +437,45 @@ export const ConversationsView: React.FC = () => {
 
       if (res.success && res.data) {
         const d = res.data;
+        // Update customer message language tag with detected language
+        if (d.detected_language) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempId
+                ? {
+                    ...m,
+                    language:
+                      d.detected_language === 'hi' && d.detected_script === 'Latn'
+                        ? 'HINGLISH'
+                        : d.detected_language!.toUpperCase(),
+                  }
+                : m
+            )
+          );
+        }
+        const aiLangBadge =
+          d.primary_language === 'hi' && (d.primary_script === 'Latn' || d.detected_script === 'Latn')
+            ? 'HINGLISH'
+            : (d.primary_language || d.detected_language || (selectedLang !== 'auto' ? selectedLang : 'EN')).toUpperCase();
         const aiMsg: DisplayMessage = {
           id: d.message_id || `ai-${Date.now()}`,
           sender_type: 'AI_AGENT',
           content: d.reply_text,
           created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          language: d.primary_language || d.detected_language || selectedLang,
+          language: aiLangBadge,
           citations: d.citations || [],
           turn_sequence_number: d.turn_sequence_number,
           is_escalated: d.is_escalated,
         };
         setMessages((prev) => [...prev, aiMsg]);
+        setTimeout(() => scrollToBottom(), 60);
 
-        // If this was a new thread, update conversation ID and refresh list
+        // If this was a new thread, update conversation ID and refresh list without blowing away messages
         if (!selectedConversationId && d.conversation_id) {
           setSelectedConversationId(d.conversation_id);
-          fetchConversations(d.conversation_id);
+          fetchConversations(d.conversation_id, true);
+        } else if (selectedConversationId) {
+          fetchConversations(selectedConversationId, true);
         }
       } else {
         setErrorMsg('Unable to process your message right now. Please try again.');
@@ -876,7 +919,11 @@ export const ConversationsView: React.FC = () => {
                           {conv.turn_count} {conv.turn_count === 1 ? 'message' : 'messages'}
                         </span>
                         <span>•</span>
-                        <span>{conv.primary_language.toUpperCase()}</span>
+                        <span>
+                          {conv.primary_language?.toLowerCase() === 'hi' || conv.primary_language?.toLowerCase() === 'hi_latn'
+                            ? 'HINGLISH'
+                            : conv.primary_language?.toUpperCase()}
+                        </span>
                         <span>•</span>
                         <span>{dateStr}</span>
                       </div>
@@ -1014,11 +1061,13 @@ export const ConversationsView: React.FC = () => {
               }}
               title="Preferred language for natural language response"
             >
+              <option value="auto">🌐 Auto-Detect (Same as Customer)</option>
+              <option value="hi_latn">🇮🇳 Hinglish (Conversational)</option>
+              <option value="hi">हिन्दी (Devanagari)</option>
               <option value="en">English (EN)</option>
               <option value="es">Español (ES)</option>
               <option value="fr">Français (FR)</option>
               <option value="de">Deutsch (DE)</option>
-              <option value="hi">हिन्दी (HI)</option>
             </select>
 
             {/* Ticket Synthesis Drawer Toggle */}
@@ -1111,7 +1160,7 @@ export const ConversationsView: React.FC = () => {
                 }}
               >
                 <span>✨</span>
-                <span>Antigravity AI Copilot • Multi-Turn RAG</span>
+                <span>Nexus Copilot • Multi-Turn Context Engine</span>
               </div>
 
               {/* Luminous Particle Title */}
@@ -1245,7 +1294,11 @@ export const ConversationsView: React.FC = () => {
                     <span>{senderLabel}</span>
                     <span>•</span>
                     <span>{msg.created_at}</span>
-                    {msg.language && <span>• {msg.language.toUpperCase()}</span>}
+                    {msg.language && (
+                      <span>
+                        • {msg.language.toUpperCase() === 'HI_LATN' ? 'HINGLISH' : msg.language.toUpperCase()}
+                      </span>
+                    )}
                   </div>
 
                   <div
@@ -1342,6 +1395,82 @@ export const ConversationsView: React.FC = () => {
               }}
             >
               <strong>API Notice:</strong> {errorMsg}
+            </div>
+          )}
+
+          {/* Animated Live Typing Indicator Bubble */}
+          {sendingMessage && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                animation: 'fadeInMsg 0.2s ease',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '0.6875rem',
+                  color: 'var(--text-muted)',
+                  marginBottom: '4px',
+                  display: 'flex',
+                  gap: '6px',
+                  alignItems: 'center',
+                }}
+              >
+                <span>Customer Support Specialist</span>
+                <span>•</span>
+                <span style={{ color: 'var(--accent-primary)', fontWeight: 600 }}>Typing...</span>
+              </div>
+
+              <div
+                style={{
+                  padding: '12px 18px',
+                  borderRadius: 'var(--radius-lg)',
+                  background: 'var(--surface-glass-elevated)',
+                  border: '1px solid var(--border-card)',
+                  boxShadow: 'var(--shadow-sm)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                }}
+              >
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <span
+                    style={{
+                      width: '7px',
+                      height: '7px',
+                      borderRadius: '50%',
+                      background: 'var(--accent-cyan)',
+                      display: 'inline-block',
+                      animation: 'typingDot 1.4s infinite ease-in-out both',
+                    }}
+                  />
+                  <span
+                    style={{
+                      width: '7px',
+                      height: '7px',
+                      borderRadius: '50%',
+                      background: 'var(--accent-cyan)',
+                      display: 'inline-block',
+                      animation: 'typingDot 1.4s infinite ease-in-out both 0.2s',
+                    }}
+                  />
+                  <span
+                    style={{
+                      width: '7px',
+                      height: '7px',
+                      borderRadius: '50%',
+                      background: 'var(--accent-cyan)',
+                      display: 'inline-block',
+                      animation: 'typingDot 1.4s infinite ease-in-out both 0.4s',
+                    }}
+                  />
+                </div>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                  Searching policy documents & drafting response...
+                </span>
+              </div>
             </div>
           )}
 

@@ -1,5 +1,5 @@
-# Unified Intelligent Customer Support AI Platform
-## Enterprise Customer Support Monolith & Command Center
+# NexusOps — Enterprise Intelligent Customer Support Platform
+## High-Performance Modular Monolith & Unified Command Center
 
 [![Acceptance Criteria](https://img.shields.io/badge/Acceptance%20Criteria-80%2F80%20PASS%20(100%25)-brightgreen?style=for-the-badge&logo=checkmarx)](#)
 [![Backend Tests](https://img.shields.io/badge/Backend%20Tests-990%2F990%20Passing-brightgreen?style=for-the-badge&logo=pytest)](#)

@@ -55,7 +55,7 @@ This inventory catalogues all required visual evidence and screenshots necessary
 The following high-resolution image captures were pre-generated during development and controlled rehearsal runs, and are catalogued in the workspace artifact repository:
 
 ```
-Directory: C:\Users\bhavs\.gemini\antigravity\brain\2bfbbf95-7798-44e8-ab81-4ad027d69019/
+Directory: artifacts/visual_captures/
 ├── dashboard_dark.png              (245,595 bytes) — Command Center Dark Mode Overview
 ├── dashboard_light.png             (190,112 bytes) — Command Center Light Mode Overview
 ├── dashboard_tablet.png            (146,391 bytes) — 768px Tablet Responsive Grid

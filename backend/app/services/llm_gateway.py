@@ -80,8 +80,13 @@ class GeminiProvider(BaseLLMProvider):
                 message="Gemini API key is not configured or missing.",
                 provider="gemini",
             )
-        if self._client is None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if self._client is None or getattr(self, "_client_loop", None) != loop:
             self._client = genai.Client(api_key=self.api_key)
+            self._client_loop = loop
         return self._client
 
     async def generate(

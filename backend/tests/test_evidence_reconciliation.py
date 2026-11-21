@@ -174,7 +174,7 @@ async def seeded_reconciliation_context(session: AsyncSession):
         "invoice_date": "2026-05-10",
         "transaction_date": "2026-05-10",
         "product_name": "Premium Headphones",
-        "merchant_name": "Antigravity Store",
+        "merchant_name": "Nexus Store",
         "overall_confidence": 0.95,
         "field_confidence": {
             "order_id": 0.96,
@@ -468,14 +468,14 @@ def test_multiple_evidence_field_aggregation():
     reconciler = EvidenceReconciliationEngine()
 
     claims = claims_engine.extract_claims(
-        "I bought 2 items from Antigravity Store for ₹1000 on 2026-05-01, order ORD-555"
+        "I bought 2 items from Nexus Store for ₹1000 on 2026-05-01, order ORD-555"
     )
     evidence = StructuredInvoiceData(
         order_id="ORD-555",
         total_amount=1000.00,
         currency="INR",
         transaction_date=date(2026, 5, 1),
-        merchant_name="Antigravity Store",
+        merchant_name="Nexus Store",
         product_quantity=2.0,
         overall_confidence=0.92,
         field_confidence={

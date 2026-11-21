@@ -229,7 +229,7 @@ class GroundedAnswerGenerator:
             "<conversation_history>\n"
             + "\n".join(lines)
             + "\n</conversation_history>\n"
-            + "Use <conversation_history> ONLY for conversational continuity and resolving follow-up references. "
+            + "Use <conversation_history> to maintain conversational continuity, remember customer details (such as customer name, order ID, or product issue), and resolve follow-up references. "
             + "All factual or policy claims MUST come strictly from <authoritative_data> with citations [1], [2].\n\n"
         )
 

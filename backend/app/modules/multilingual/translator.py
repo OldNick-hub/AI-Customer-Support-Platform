@@ -107,7 +107,9 @@ class Translator:
             self.pii_masker = get_pii_masker()
         return self.pii_masker
 
-    def _build_system_instruction(self, source_lang: str, target_lang: str) -> str:
+    def _build_system_instruction(
+        self, source_lang: str, target_lang: str, target_script: Optional[str] = None
+    ) -> str:
         """Constructs a strict, constrained system prompt for deterministic translation."""
         source_name = LANGUAGE_NAMES.get(source_lang, source_lang)
         target_name = LANGUAGE_NAMES.get(target_lang, target_lang)
@@ -122,7 +124,14 @@ class Translator:
             f"Never translate, renumber, omit, or alter any placeholder tokens.\n"
         )
         if target_lang == "hi":
-            instruction += "3. For Hindi, use natural, polite customer support phrasing.\n"
+            if target_script == "Latn":
+                instruction += (
+                    "3. CRITICAL HINGLISH REQUIREMENT: Output MUST be in natural, friendly, conversational Hinglish "
+                    "(Hindi written strictly in Latin/English alphabet letters, e.g. 'Aapka order return karne ke liye please apna Order ID batayein.'). "
+                    "DO NOT use Devanagari script. Use natural, conversational Romanized Hindi/Hinglish just like a helpful customer support agent chatting with an Indian customer.\n"
+                )
+            else:
+                instruction += "3. For Hindi, use natural, polite customer support phrasing.\n"
         elif source_lang == "hi" and target_lang == "en":
             instruction += "3. Understand colloquial and Romanized Hindi (Hinglish) and translate to formal English.\n"
 
@@ -176,15 +185,16 @@ class Translator:
         return result
 
     def _generate_cache_key(
-        self, source_lang: str, target_lang: str, normalized_text: str
+        self, source_lang: str, target_lang: str, normalized_text: str, target_script: Optional[str] = None
     ) -> str:
         """Generates language-isolated, model/version-bound, PII-free SHA-256 cache key.
 
-        Format: trans:{prompt_version}:{model_tag}:{src}:{tgt}:{sha256(canonical_pii_free_text)}
+        Format: trans:{prompt_version}:{model_tag}:{src}:{tgt}:{script}:{sha256(canonical_pii_free_text)}
         """
         model_tag = self.model_name or "default"
+        script_tag = target_script or "default"
         content_hash = hashlib.sha256(normalized_text.strip().encode("utf-8")).hexdigest()
-        return f"trans:{self.prompt_version}:{model_tag}:{source_lang}:{target_lang}:{content_hash}"
+        return f"trans:{self.prompt_version}:{model_tag}:{source_lang}:{target_lang}:{script_tag}:{content_hash}"
 
     def _validate_cached_placeholders(
         self, cached_text: str, expected_norm_tags: Set[str]
@@ -252,6 +262,7 @@ class Translator:
         text: Optional[str],
         target_language: str,
         vault: Optional[EntityPreservationVault] = None,
+        target_script: Optional[str] = None,
     ) -> TranslationResult:
         """Translates English agent response into customer's preferred language."""
         return await self.translate(
@@ -260,6 +271,7 @@ class Translator:
             target_language=target_language,
             vault=vault,
             is_outbound_response=True,
+            target_script=target_script,
         )
 
     async def translate(
@@ -271,6 +283,7 @@ class Translator:
         mask_pii: bool = True,
         mask_entities: bool = True,
         is_outbound_response: bool = False,
+        target_script: Optional[str] = None,
     ) -> TranslationResult:
         """Executes secure bidirectional translation with PII scrubbing, 128-bit entity preservation, and caching."""
         start_time = time.perf_counter()
@@ -342,7 +355,7 @@ class Translator:
 
         # 6. Placeholder Normalization for Shared Redis Caching
         norm_text, norm_to_vault, _ = self._normalize_placeholders_for_cache(processed_text)
-        cache_key = self._generate_cache_key(src, tgt, norm_text)
+        cache_key = self._generate_cache_key(src, tgt, norm_text, target_script=target_script)
 
         # 7. Redis Cache Inspection (PII-Free Template Lookup)
         cached_val = await self._get_cached_translation(cache_key)
@@ -382,7 +395,7 @@ class Translator:
 
         # 8. Neural Translation via LLMGateway (temperature=0.0)
         gateway = self._get_llm_gateway()
-        system_instruction = self._build_system_instruction(src, tgt)
+        system_instruction = self._build_system_instruction(src, tgt, target_script=target_script)
 
         try:
             llm_resp = await gateway.generate(

@@ -254,6 +254,13 @@ class MultilingualOrchestrator:
             "acknowledgment": "बिल्कुल ठीक! बताएं आगे क्या करना है।",
             "farewell": "अलविदा! जब भी ज़रूरत हो, आप कभी भी यहाँ संपर्क कर सकते हैं।",
         },
+        "hi_latn": {
+            "greeting": "Namaste! Customer Support mein aapka swagat hai. Aaj main aapke order, delivery ya product ke liye kya madad kar sakta hoon?",
+            "how_are_you": "Main bilkul theek hoon, poochne ke liye shukriya! Boliye, aaj main aapki kya help kar sakta hoon?",
+            "gratitude": "Aapka swagat hai! Agar koi aur sawaal ho toh zaroor batayein.",
+            "acknowledgment": "Bilkul theek! Batayein aage kya karna hai.",
+            "farewell": "Dhanyawaad! Jab bhi zaroorat ho, aap yahan contact kar sakte hain. Have a great day!",
+        },
     }
 
     @classmethod
@@ -285,9 +292,12 @@ class MultilingualOrchestrator:
         return None
 
     @classmethod
-    def _render_conversational_reply(cls, intent: str, lang_code: str) -> str:
+    def _render_conversational_reply(cls, intent: str, lang_code: str, script: Optional[str] = None) -> str:
         """Returns a polite localized reply for pure conversational turns."""
-        lang_map = cls._CONVERSATIONAL_REPLIES.get(lang_code, cls._CONVERSATIONAL_REPLIES["en"])
+        effective_key = lang_code
+        if lang_code == "hi" and script == "Latn":
+            effective_key = "hi_latn"
+        lang_map = cls._CONVERSATIONAL_REPLIES.get(effective_key, cls._CONVERSATIONAL_REPLIES.get(lang_code, cls._CONVERSATIONAL_REPLIES["en"]))
         return lang_map.get(intent, cls._CONVERSATIONAL_REPLIES["en"]["greeting"])
 
     async def reserve_idempotency_key(
@@ -463,10 +473,16 @@ class MultilingualOrchestrator:
         preferred_lang: Optional[str] = None,
     ) -> Tuple[bool, bool, Optional[str], Optional[str]]:
         """Evaluates language routing policy. Returns (clarification_needed, inbound_trans_needed, source_lang, target_lang)."""
+        eff_pref = "hi" if preferred_lang in ("hi_latn", "hinglish") else preferred_lang
+
+        # If confidence is below threshold or language is undetermined, inherit preferred/conversation language if available
         if confidence < MIN_CONFIDENCE_THRESHOLD or detected_lang not in SUPPORTED_LANGUAGES:
+            if eff_pref and eff_pref in SUPPORTED_LANGUAGES:
+                inbound_trans_needed = (eff_pref != "en")
+                return False, inbound_trans_needed, eff_pref, eff_pref
             return True, False, None, None
 
-        target_lang = preferred_lang if preferred_lang in SUPPORTED_LANGUAGES else detected_lang
+        target_lang = eff_pref if (eff_pref and eff_pref in SUPPORTED_LANGUAGES) else detected_lang
         inbound_trans_needed = (detected_lang != "en")
         return False, inbound_trans_needed, detected_lang, target_lang
 
@@ -740,16 +756,41 @@ class MultilingualOrchestrator:
                 }
 
             # Step 6: Language Detection & Routing Policy
+            eff_pref_lang = preferred_language
+            prev_script: Optional[str] = None
+            if not eff_pref_lang and active_conv_id and conversation_history:
+                for prev_turn in reversed(conversation_history):
+                    prev_lang = prev_turn.get("language")
+                    if prev_lang in SUPPORTED_LANGUAGES or prev_lang in ("hi_latn", "hinglish"):
+                        eff_pref_lang = prev_lang
+                        prev_c = prev_turn.get("content") or ""
+                        if prev_lang in ("hi", "hi_latn", "hinglish"):
+                            prev_script = "Deva" if bool(re.search(r"[\u0900-\u097F]", prev_c)) else "Latn"
+                        break
+
             det_res: LanguageDetectionResult = self.language_detector.detect_language(
-                message, preferred_language=preferred_language
+                message, preferred_language=eff_pref_lang
             )
-            det_lang = getattr(det_res, "language", getattr(det_res, "detected_language", "und"))
+            det_lang = getattr(det_res, "detected_language", getattr(det_res, "language", "und"))
+            det_script = getattr(det_res, "detected_script", getattr(det_res, "script", None))
             det_conf = getattr(det_res, "confidence", getattr(det_res, "language_confidence", 0.0))
             clarification, inbound_trans, source_lang, target_lang = self.evaluate_language_routing(
                 detected_lang=det_lang,
                 confidence=det_conf,
-                preferred_lang=preferred_language,
+                preferred_lang=preferred_language or eff_pref_lang,
             )
+
+            # Resolve target script (Devanagari vs Romanized Latn/Hinglish)
+            target_script: Optional[str] = None
+            if target_lang == "hi":
+                if det_script == "Deva":
+                    target_script = "Deva"
+                elif det_script == "Latn" or preferred_language in ("hi_latn", "hinglish") or eff_pref_lang in ("hi_latn", "hinglish") or prev_script == "Latn":
+                    target_script = "Latn"
+                elif preferred_language == "hi":
+                    target_script = "Deva"
+                else:
+                    target_script = "Latn"
 
             if clarification:
                 return {
@@ -786,7 +827,7 @@ class MultilingualOrchestrator:
             model_used_override: Optional[str] = None
             if smalltalk_intent:
                 reply_lang = target_lang or source_lang or "en"
-                final_reply_text = self._render_conversational_reply(smalltalk_intent, reply_lang)
+                final_reply_text = self._render_conversational_reply(smalltalk_intent, reply_lang, script=target_script)
                 rag_result = None
                 citations = []
                 confidence = 1.0
@@ -970,28 +1011,34 @@ class MultilingualOrchestrator:
 
                 # Step 10: Outbound Response Translation & Entity Re-attachment
                 final_reply_text = reply_text
-                if target_lang and target_lang != "en" and not refusal_triggered:
-                    # Shield citations
-                    shielded_reply = vault.mask_citations(reply_text)
+                if target_lang and target_lang != "en":
                     try:
                         out_trans: TranslationResult = await self.translator.translate_outbound(
-                            text=shielded_reply,
+                            text=reply_text,
                             target_language=target_lang,
+                            vault=EntityPreservationVault(),
+                            target_script=target_script,
                         )
-                        unmasked_reply = vault.unmask_citations(out_trans.translated_text)
-                        # 4-point structural parity check
-                        if not self.evaluate_citation_parity(citations, unmasked_reply):
-                            logger.warning("Citation structural parity check failed for target lang %s", target_lang)
-                            final_reply_text = LOCALIZED_SERVICE_NOTICES.get(target_lang, LOCALIZED_SERVICE_NOTICES["en"])
+                        fallback_key = "hi_latn" if (target_lang == "hi" and target_script == "Latn") else target_lang
+                        if out_trans.is_successful and out_trans.translated_text:
+                            # 4-point structural parity check
+                            if not self.evaluate_citation_parity(citations, out_trans.translated_text):
+                                logger.warning("Citation structural parity check failed for target lang %s", target_lang)
+                                final_reply_text = LOCALIZED_SERVICE_NOTICES.get(fallback_key, LOCALIZED_SERVICE_NOTICES.get(target_lang, LOCALIZED_SERVICE_NOTICES["en"]))
+                                technical_error = True
+                                technical_error_code = "TRANSLATION_UNAVAILABLE"
+                            else:
+                                final_reply_text = out_trans.translated_text
+                                technical_error = False
+                                technical_error_code = None
+                        else:
+                            final_reply_text = LOCALIZED_SERVICE_NOTICES.get(fallback_key, LOCALIZED_SERVICE_NOTICES.get(target_lang, LOCALIZED_SERVICE_NOTICES["en"]))
                             technical_error = True
                             technical_error_code = "TRANSLATION_UNAVAILABLE"
-                        else:
-                            final_reply_text = unmasked_reply
-                            technical_error = False
-                            technical_error_code = None
                     except Exception as exc:
                         logger.error("Outbound translation failed: %s", exc)
-                        final_reply_text = LOCALIZED_SERVICE_NOTICES.get(target_lang, LOCALIZED_SERVICE_NOTICES["en"])
+                        fallback_key = "hi_latn" if (target_lang == "hi" and target_script == "Latn") else target_lang
+                        final_reply_text = LOCALIZED_SERVICE_NOTICES.get(fallback_key, LOCALIZED_SERVICE_NOTICES.get(target_lang, LOCALIZED_SERVICE_NOTICES["en"]))
                         technical_error = True
                         technical_error_code = "TRANSLATION_UNAVAILABLE"
                 else:
@@ -1036,6 +1083,7 @@ class MultilingualOrchestrator:
                 conversation_id=str(active_conv_id),
             )
 
+            now_msg_ts = datetime.now(timezone.utc)
             cust_msg = Message(
                 id=uuid.uuid4(),
                 conversation_id=active_conv_id,
@@ -1046,7 +1094,7 @@ class MultilingualOrchestrator:
                 detected_language=source_lang or "en",
                 language_confidence=det_conf,
                 turn_sequence_number=allocated_turn_seq,
-                created_at=datetime.now(timezone.utc),
+                created_at=now_msg_ts,
             )
             r_cust = session.add(cust_msg)
             if asyncio.iscoroutine(r_cust):
@@ -1061,7 +1109,7 @@ class MultilingualOrchestrator:
                 detected_language=target_lang or "en",
                 language_confidence=1.0,
                 turn_sequence_number=allocated_turn_seq,
-                created_at=datetime.now(timezone.utc),
+                created_at=now_msg_ts + timedelta(milliseconds=200),
             )
             r_agent = session.add(agent_msg)
             if asyncio.iscoroutine(r_agent):
@@ -1147,7 +1195,9 @@ class MultilingualOrchestrator:
                 "technical_error_code": technical_error_code,
                 "detected_language": source_lang or "en",
                 "detected_language_confidence": det_conf,
+                "detected_script": det_script,
                 "primary_language": target_lang or "en",
+                "primary_script": target_script,
                 "context_restored": context_restored,
                 "turn_sequence_number": allocated_turn_seq,
                 "conversation_id": str(active_conv_id),

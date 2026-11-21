@@ -13,7 +13,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import ResolvedAuthContext, get_auth_context, get_db
@@ -437,7 +437,16 @@ async def get_conversation_messages(
     msg_query = (
         select(Message)
         .where(Message.conversation_id == conversation_id)
-        .order_by(Message.created_at.asc(), Message.id.asc())
+        .order_by(
+            Message.created_at.asc(),
+            case(
+                (Message.sender_type == "CUSTOMER", 1),
+                (Message.sender_type == "AI_AGENT", 2),
+                (Message.sender_type == "HUMAN_AGENT", 3),
+                else_=4,
+            ),
+            Message.id.asc(),
+        )
         .limit(safe_limit)
         .offset(safe_offset)
     )

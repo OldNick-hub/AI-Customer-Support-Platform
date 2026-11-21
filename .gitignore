@@ -99,4 +99,6 @@ Thumbs.db
 
 # Nexus Launcher Runtime State & Logs
 .nexus/
+.playwright-mcp/
+scratch/
 

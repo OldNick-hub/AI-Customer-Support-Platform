@@ -107,9 +107,13 @@ class ChatMessageRequest(BaseModel):
     def validate_preferred_language(cls, v: Optional[str]) -> Optional[str]:
         if v is not None:
             v_norm = v.strip().lower()
+            if v_norm in ("auto", "same", ""):
+                return None
+            if v_norm in ("hi_latn", "hinglish"):
+                return "hi_latn"
             if v_norm not in ("en", "es", "fr", "de", "hi"):
                 raise ValueError(
-                    f"Invalid preferred_language '{v}'. Supported languages: en, es, fr, de, hi."
+                    f"Invalid preferred_language '{v}'. Supported languages: en, es, fr, de, hi, hi_latn."
                 )
             return v_norm
         return v
@@ -153,7 +157,9 @@ class ChatMessageData(BaseModel):
     total_latency_ms: float
     detected_language: str = Field(default="en", description="Inbound detected language code")
     detected_language_confidence: float = Field(default=1.0, description="Language detection confidence score")
+    detected_script: Optional[str] = Field(default=None, description="Inbound detected script (Deva, Latn)")
     primary_language: str = Field(default="en", description="Effective dialogue language")
+    primary_script: Optional[str] = Field(default=None, description="Outbound response script (Deva, Latn)")
     context_restored: bool = Field(default=False, description="True if idle session was restored")
     clarification_needed: bool = Field(default=False, description="True if language clarification is needed")
     technical_error: bool = Field(default=False, description="True if technical fallback notice is returned")
@@ -456,7 +462,9 @@ async def post_chat_message(
         total_latency_ms=res.get("total_latency_ms", 0.0),
         detected_language=res.get("detected_language", "en"),
         detected_language_confidence=res.get("detected_language_confidence", 1.0),
+        detected_script=res.get("detected_script"),
         primary_language=res.get("primary_language", "en"),
+        primary_script=res.get("primary_script"),
         context_restored=res.get("context_restored", False),
         clarification_needed=res.get("clarification_needed", False),
         technical_error=res.get("technical_error", False),

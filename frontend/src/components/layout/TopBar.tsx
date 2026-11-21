@@ -3,7 +3,6 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { LiquidToggle, NimbusToggleIcons } from '../ui/liquid-glass-toggle';
 import { SearchIcon, BellIcon, ShieldCheckIcon } from '../common/Icons';
-import GlassmorphismCta from '../ui/glassmorphism-cta';
 
 export const TopBar: React.FC = () => {
   const { isDark, toggleTheme } = useTheme();
@@ -74,7 +73,7 @@ export const TopBar: React.FC = () => {
           </div>
           <div>
             <div style={{ fontSize: '0.9375rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
-              Antigravity AI
+              NexusOps
             </div>
             <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
               Command Center
@@ -139,9 +138,6 @@ export const TopBar: React.FC = () => {
 
       {/* Right Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-        {/* Animated Command-Center AI Assistant CTA */}
-        <GlassmorphismCta size="sm" label="Launch AI Copilot" href="/conversations" />
-
         {/* Backend Status Indicator */}
         <div
           style={{

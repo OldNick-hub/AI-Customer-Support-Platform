@@ -51,6 +51,10 @@ LOCALIZED_SERVICE_NOTICES: Dict[str, str] = {
         "क्षमा करें, हमारी अनुवाद सेवा वर्तमान में अनुपलब्ध है। "
         "आपका अनुरोध दर्ज कर लिया गया है और हमारा सहायता प्रतिनिधि शीघ्र ही आपसे संपर्क करेगा।"
     ),
+    "hi_latn": (
+        "Maaf kijiye, hamari translation service abhi temporarily unavailable hai. "
+        "Aapki inquiry log kar li gayi hai aur hamara support agent jaldi hi aapse contact karega."
+    ),
     "en": (
         "We apologize, but our processing service is temporarily unavailable. "
         "Your inquiry has been logged and a support representative will assist you shortly."
